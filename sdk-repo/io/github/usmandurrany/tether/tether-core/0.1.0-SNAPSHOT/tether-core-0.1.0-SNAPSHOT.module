@@ -1,0 +1,174 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.github.usmandurrany.tether",
+    "module": "tether-core",
+    "version": "0.1.0-SNAPSHOT",
+    "attributes": {
+      "org.gradle.status": "integration"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.14.4"
+    }
+  },
+  "variants": [
+    {
+      "name": "metadataApiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.platform.type": "common"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.usmandurrany.tether",
+          "module": "tether-xml",
+          "version": {
+            "requires": "0.1.0-SNAPSHOT"
+          }
+        },
+        {
+          "group": "io.github.usmandurrany.tether",
+          "module": "tether-sasl",
+          "version": {
+            "requires": "0.1.0-SNAPSHOT"
+          }
+        },
+        {
+          "group": "io.github.usmandurrany.tether",
+          "module": "tether-transport",
+          "version": {
+            "requires": "0.1.0-SNAPSHOT"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.20"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "tether-core-metadata-0.1.0-SNAPSHOT.jar",
+          "url": "tether-core-0.1.0-SNAPSHOT.jar",
+          "size": 18863,
+          "sha512": "0e73f1db2c87969d4d18b8e5e61a71116702caccdf8579a426b2a20dd1e6f0fc16958f78c03137064dd5d943d48f474981ebc34d839674331cdf81b6e3a87080",
+          "sha256": "112acdfa1ba827dd865232a5db2bf5bc0ae1a63b36741c2ea97d034584a287ca",
+          "sha1": "b72e6c5407182d909188205dc5fd2ed832f1d0b5",
+          "md5": "70cd23a7d7684758cb96ea8ad4948abe"
+        }
+      ]
+    },
+    {
+      "name": "metadataSourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.platform.type": "common"
+      },
+      "files": [
+        {
+          "name": "tether-core-kotlin-0.1.0-SNAPSHOT-sources.jar",
+          "url": "tether-core-0.1.0-SNAPSHOT-sources.jar",
+          "size": 37301,
+          "sha512": "89abffaec520a01bd2318da94c16375b1723420f907597bed41a677ddf6eac3ec102d79679f96d82e1597bdeeaec3a27c1c3daecafd2bf0ff1289f6d7208682e",
+          "sha256": "ff5219ffea27e5b2fdec8986208fa2d4e1850b2363ea9e5536d99392aa23bff8",
+          "sha1": "896581624ab35d020973bc190db71cf62161202f",
+          "md5": "2a922078a4cbaed4acb75bbf8a46e517"
+        }
+      ]
+    },
+    {
+      "name": "jvmApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../tether-core-jvm/0.1.0-SNAPSHOT/tether-core-jvm-0.1.0-SNAPSHOT.module",
+        "group": "io.github.usmandurrany.tether",
+        "module": "tether-core-jvm",
+        "version": "0.1.0-SNAPSHOT"
+      }
+    },
+    {
+      "name": "jvmRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../tether-core-jvm/0.1.0-SNAPSHOT/tether-core-jvm-0.1.0-SNAPSHOT.module",
+        "group": "io.github.usmandurrany.tether",
+        "module": "tether-core-jvm",
+        "version": "0.1.0-SNAPSHOT"
+      }
+    },
+    {
+      "name": "jvmSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../tether-core-jvm/0.1.0-SNAPSHOT/tether-core-jvm-0.1.0-SNAPSHOT.module",
+        "group": "io.github.usmandurrany.tether",
+        "module": "tether-core-jvm",
+        "version": "0.1.0-SNAPSHOT"
+      }
+    },
+    {
+      "name": "linuxX64ApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-api",
+        "org.jetbrains.kotlin.native.target": "linux_x64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../tether-core-linuxx64/0.1.0-SNAPSHOT/tether-core-linuxx64-0.1.0-SNAPSHOT.module",
+        "group": "io.github.usmandurrany.tether",
+        "module": "tether-core-linuxx64",
+        "version": "0.1.0-SNAPSHOT"
+      }
+    },
+    {
+      "name": "linuxX64SourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.native.target": "linux_x64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../tether-core-linuxx64/0.1.0-SNAPSHOT/tether-core-linuxx64-0.1.0-SNAPSHOT.module",
+        "group": "io.github.usmandurrany.tether",
+        "module": "tether-core-linuxx64",
+        "version": "0.1.0-SNAPSHOT"
+      }
+    }
+  ]
+}

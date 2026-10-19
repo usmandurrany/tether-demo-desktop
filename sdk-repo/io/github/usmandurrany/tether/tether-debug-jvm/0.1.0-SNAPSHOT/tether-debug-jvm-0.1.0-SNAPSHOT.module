@@ -1,0 +1,123 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "url": "../../tether-debug/0.1.0-SNAPSHOT/tether-debug-0.1.0-SNAPSHOT.module",
+    "group": "io.github.usmandurrany.tether",
+    "module": "tether-debug",
+    "version": "0.1.0-SNAPSHOT",
+    "attributes": {
+      "org.gradle.status": "integration"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.14.4"
+    }
+  },
+  "variants": [
+    {
+      "name": "jvmApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.usmandurrany.tether",
+          "module": "tether-core",
+          "version": {
+            "requires": "0.1.0-SNAPSHOT"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.20"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "tether-debug-jvm-0.1.0-SNAPSHOT.jar",
+          "url": "tether-debug-jvm-0.1.0-SNAPSHOT.jar",
+          "size": 103666,
+          "sha512": "1318680407b3fab892a0091810062be3bd974e7e30afb751fc01b482ed6de04c84c49603a20059eac1e3c85d01ec0f8f404d411dfc6cd4ec40d3728da56c1ec1",
+          "sha256": "3cbb896c6bceb28cb0af2642dd1f42e3d3f2e3b747a446cdbb98c82cb2f81d62",
+          "sha1": "721c678e203ccac4f8af064fb1683d2b038bb20a",
+          "md5": "9016ade5c328867c1a9270a6dd260acd"
+        }
+      ]
+    },
+    {
+      "name": "jvmRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.usmandurrany.tether",
+          "module": "tether-core",
+          "version": {
+            "requires": "0.1.0-SNAPSHOT"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.20"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-core",
+          "version": {
+            "requires": "1.11.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "tether-debug-jvm-0.1.0-SNAPSHOT.jar",
+          "url": "tether-debug-jvm-0.1.0-SNAPSHOT.jar",
+          "size": 103666,
+          "sha512": "1318680407b3fab892a0091810062be3bd974e7e30afb751fc01b482ed6de04c84c49603a20059eac1e3c85d01ec0f8f404d411dfc6cd4ec40d3728da56c1ec1",
+          "sha256": "3cbb896c6bceb28cb0af2642dd1f42e3d3f2e3b747a446cdbb98c82cb2f81d62",
+          "sha1": "721c678e203ccac4f8af064fb1683d2b038bb20a",
+          "md5": "9016ade5c328867c1a9270a6dd260acd"
+        }
+      ]
+    },
+    {
+      "name": "jvmSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "files": [
+        {
+          "name": "tether-debug-jvm-0.1.0-SNAPSHOT-sources.jar",
+          "url": "tether-debug-jvm-0.1.0-SNAPSHOT-sources.jar",
+          "size": 18790,
+          "sha512": "5318d410ba9426096fb339b9d38e036594c228cfb268e8648743140997a327a4fa735f5e1e893a1aefd2ede4c9e3a138e667b2cb0bc88204f00820aecf4fe2c8",
+          "sha256": "dd43ee353c899fae11651e882e461d66da4816edf5ed7bdb953b71daa07109c0",
+          "sha1": "a34ba2d35ba86fb589f8dfa72211b2cce5fc6a23",
+          "md5": "34b42420551acbd5440b5b396fbd7dd9"
+        }
+      ]
+    }
+  ]
+}

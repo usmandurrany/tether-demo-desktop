@@ -1,0 +1,102 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "url": "../../tether-crypto/0.1.0-SNAPSHOT/tether-crypto-0.1.0-SNAPSHOT.module",
+    "group": "io.github.usmandurrany.tether",
+    "module": "tether-crypto",
+    "version": "0.1.0-SNAPSHOT",
+    "attributes": {
+      "org.gradle.status": "integration"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.14.4"
+    }
+  },
+  "variants": [
+    {
+      "name": "jvmApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.20"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "tether-crypto-jvm-0.1.0-SNAPSHOT.jar",
+          "url": "tether-crypto-jvm-0.1.0-SNAPSHOT.jar",
+          "size": 15032,
+          "sha512": "49b4ba05e1f2ebf5ee6017acf70c2b55a781fb1612ee600fb0fa163e11147fb01fa20d4d1494651c6468153da43d27a03b9095aab6be75f8888003fd9b066f3b",
+          "sha256": "1aed9ffff790a364bb29cf3480f5d51249deb85b44e51cbd401b2fca61ba34c6",
+          "sha1": "c7ca62da8ebbc8d526e6732a63bb15c04faeee9d",
+          "md5": "dfb542f0765666fd5b982cc604882ee1"
+        }
+      ]
+    },
+    {
+      "name": "jvmRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.20"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "tether-crypto-jvm-0.1.0-SNAPSHOT.jar",
+          "url": "tether-crypto-jvm-0.1.0-SNAPSHOT.jar",
+          "size": 15032,
+          "sha512": "49b4ba05e1f2ebf5ee6017acf70c2b55a781fb1612ee600fb0fa163e11147fb01fa20d4d1494651c6468153da43d27a03b9095aab6be75f8888003fd9b066f3b",
+          "sha256": "1aed9ffff790a364bb29cf3480f5d51249deb85b44e51cbd401b2fca61ba34c6",
+          "sha1": "c7ca62da8ebbc8d526e6732a63bb15c04faeee9d",
+          "md5": "dfb542f0765666fd5b982cc604882ee1"
+        }
+      ]
+    },
+    {
+      "name": "jvmSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "files": [
+        {
+          "name": "tether-crypto-jvm-0.1.0-SNAPSHOT-sources.jar",
+          "url": "tether-crypto-jvm-0.1.0-SNAPSHOT-sources.jar",
+          "size": 6968,
+          "sha512": "f6e946b3422a79104fc43dbfac4b5aa7a81c4d48609980cdc3147d3aa3ed29b41e4657da542743d9626aa454a6dd3df6af2e7073924fb90f1a50fe6aceb5ac04",
+          "sha256": "686250187e09e0405d359a08230de6c4cb9ec62e078408ef6e0a5730ec73e8a8",
+          "sha1": "0c1fca7ef0d522b7fd30494f1e7458cb6e4f0a4e",
+          "md5": "087c5dad33f74368b66678e3956d2104"
+        }
+      ]
+    }
+  ]
+}

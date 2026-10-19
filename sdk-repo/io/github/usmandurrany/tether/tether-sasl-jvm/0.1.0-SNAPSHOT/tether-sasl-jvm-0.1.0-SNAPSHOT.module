@@ -1,0 +1,109 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "url": "../../tether-sasl/0.1.0-SNAPSHOT/tether-sasl-0.1.0-SNAPSHOT.module",
+    "group": "io.github.usmandurrany.tether",
+    "module": "tether-sasl",
+    "version": "0.1.0-SNAPSHOT",
+    "attributes": {
+      "org.gradle.status": "integration"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.14.4"
+    }
+  },
+  "variants": [
+    {
+      "name": "jvmApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.20"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "tether-sasl-jvm-0.1.0-SNAPSHOT.jar",
+          "url": "tether-sasl-jvm-0.1.0-SNAPSHOT.jar",
+          "size": 43025,
+          "sha512": "a1462a48e6d6bf88c0a25885e8aeabe6fe38fb76d22dc2ef6ee1a4373bc3cbf76e3f4cf8df60743cd00af51fa7b198c800946bffcf0e5857d6a9611d8ba7ea58",
+          "sha256": "2953d86a091cc5e13c366a1d4c8e13a3854ef9fd8360c590f248a90636e12ca3",
+          "sha1": "ae83dd635c1379b4385bce52608b31f0b16cebdd",
+          "md5": "e16d2d00670b7f173f5e1dea51b14580"
+        }
+      ]
+    },
+    {
+      "name": "jvmRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.20"
+          }
+        },
+        {
+          "group": "io.github.usmandurrany.tether",
+          "module": "tether-crypto",
+          "version": {
+            "requires": "0.1.0-SNAPSHOT"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "tether-sasl-jvm-0.1.0-SNAPSHOT.jar",
+          "url": "tether-sasl-jvm-0.1.0-SNAPSHOT.jar",
+          "size": 43025,
+          "sha512": "a1462a48e6d6bf88c0a25885e8aeabe6fe38fb76d22dc2ef6ee1a4373bc3cbf76e3f4cf8df60743cd00af51fa7b198c800946bffcf0e5857d6a9611d8ba7ea58",
+          "sha256": "2953d86a091cc5e13c366a1d4c8e13a3854ef9fd8360c590f248a90636e12ca3",
+          "sha1": "ae83dd635c1379b4385bce52608b31f0b16cebdd",
+          "md5": "e16d2d00670b7f173f5e1dea51b14580"
+        }
+      ]
+    },
+    {
+      "name": "jvmSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "files": [
+        {
+          "name": "tether-sasl-jvm-0.1.0-SNAPSHOT-sources.jar",
+          "url": "tether-sasl-jvm-0.1.0-SNAPSHOT-sources.jar",
+          "size": 12267,
+          "sha512": "341a34a8736ea51f444501fd574a54c05fff0f67da1efbcef3e73bd7f8227230ab85860c95806052b32cb12227db03ec78349eabef981eee9fa4c0e74c59090c",
+          "sha256": "3c406782becad9e8e77c34ea3138fba494096525f714272a67345c9179ed7de4",
+          "sha1": "108a634d83ba1ac9e6ff043ee811a6a69a5722f5",
+          "md5": "5b0d554705ad0dea8c526d5f409e823b"
+        }
+      ]
+    }
+  ]
+}
