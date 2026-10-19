@@ -2,16 +2,13 @@ package io.github.usmandurrany.tether.demo.ui
 
 import io.github.usmandurrany.tether.core.BareJid
 import io.github.usmandurrany.tether.core.ConnectionState
-import io.github.usmandurrany.tether.demo.Conversation
 import io.github.usmandurrany.tether.demo.DemoSession
-import io.github.usmandurrany.tether.demo.Delivery
-import io.github.usmandurrany.tether.im.ChatState
 import io.github.usmandurrany.tether.im.ContactPresence
+import io.github.usmandurrany.tether.im.Message
+import io.github.usmandurrany.tether.im.MessageStatus
 import io.github.usmandurrany.tether.im.RosterItem
 import io.github.usmandurrany.tether.im.Subscription
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import java.awt.BorderLayout
@@ -73,10 +70,12 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
     private val input = JTextField().apply { putClientProperty("JTextField.placeholderText", "Write a message") }
     private val send = JButton("Send")
 
+    private val chat = session.chat
     private var peer: BareJid? = null
-    private var typingJob: Job? = null
-    private var composing = false
     private var renderedMessages: Any? = null
+
+    /** Chats whose whole archive is loaded. */
+    private val historyComplete = HashSet<BareJid>()
 
     init {
         contacts.selectionMode = ListSelectionModel.SINGLE_SELECTION
@@ -134,14 +133,16 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
     private fun bind() {
         val im = session.im
         uiScope.launch {
-            combine(im.roster.items, im.presences.contacts, session.conversations.all) { roster, presences, convs ->
-                val jids = (roster.keys + convs.keys).filter { it != session.account }
-                jids.map { ContactRow(it, roster[it], presences[it].orEmpty(), convs[it]?.unread ?: 0) }
+            combine(im.roster.items, im.presences.contacts, chat.conversations) { roster, presences, convs ->
+                val unread = convs.associate { it.peer to it.unreadCount }
+                val jids = (roster.keys + unread.keys).filter { it != session.account }
+                jids.map { ContactRow(it, roster[it], presences[it].orEmpty(), unread[it] ?: 0) }
                     .sortedWith(compareBy<ContactRow> { !it.online }.thenBy { it.label.lowercase() })
             }.collect(::showContacts)
         }
-        uiScope.launch { session.conversations.all.collect { convs -> peer?.let { showConversation(convs[it]) } } }
-        uiScope.launch { session.subscriptionRequests.collect(::showRequests) }
+        uiScope.launch { chat.allMessages.collect { all -> peer?.let { showConversation(all[it].orEmpty()) } } }
+        uiScope.launch { chat.typingContacts.collect { refreshHeader() } }
+        uiScope.launch { combine(chat.contactRequests, session.requestNotes) { r, n -> r to n }.collect { (r, n) -> showRequests(r, n) } }
         uiScope.launch { im.history.available.collect { refreshLoadOlder() } }
         uiScope.launch { session.client.state.collect { refreshHeader() } }
     }
@@ -155,9 +156,10 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
         refreshHeader()
     }
 
-    private fun showRequests(pending: Map<BareJid, String?>) {
+    private fun showRequests(pending: Set<BareJid>, notes: Map<BareJid, String>) {
         requests.removeAll()
-        pending.forEach { (jid, note) ->
+        pending.forEach { jid ->
+            val note = notes[jid]
             val text = "<html><b>${htmlEscape(jid.toString())}</b> wants to see when you're online" +
                 (note?.let { "<br>“${htmlEscape(it)}”" } ?: "") + "</html>"
             val row = JPanel(BorderLayout(6, 4)).apply {
@@ -189,16 +191,16 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
 
     private fun open(jid: BareJid) {
         if (peer == jid) return
-        stopTyping()
+        // The SDK marks an open chat read (and tells the contact) while the window has focus,
+        // loads its newest history the first time, and stops our typing when it closes.
+        peer?.let(chat::closeChat)
         peer = jid
-        session.conversations.open = jid
+        chat.openChat(jid)
         renderedMessages = null
         setComposerEnabled(true)
         input.text = ""
         refreshHeader()
-        showConversation(session.conversations.all.value[jid])
-        val conv = session.conversations.all.value[jid]
-        if (session.im.history.available.value && conv?.historyLoaded != true) loadHistory()
+        showConversation(chat.allMessages.value[jid].orEmpty())
         input.requestFocusInWindow()
     }
 
@@ -206,10 +208,8 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
         val jid = peer ?: return
         val row = (0 until model.size()).map(model::get).firstOrNull { it.jid == jid }
         chatTitle.text = row?.label ?: jid.toString()
-        val conv = session.conversations.all.value[jid]
         chatSubtitle.text = when {
-            conv?.typing == ChatState.COMPOSING -> "typing…"
-            conv?.typing == ChatState.PAUSED -> "stopped typing"
+            jid in chat.typingContacts.value -> "typing…"
             row == null -> jid.toString()
             row.online -> listOfNotNull(row.best?.show?.wire ?: "online", row.best?.status).joinToString(" · ")
             row.item == null -> "not in your contacts"
@@ -221,23 +221,21 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
     }
 
     private fun refreshLoadOlder() {
-        val conv = peer?.let { session.conversations.all.value[it] }
-        loadOlder.isVisible = peer != null && session.im.history.available.value && conv?.historyComplete != true
+        loadOlder.isVisible = peer != null && session.im.history.available.value && peer !in historyComplete
     }
 
-    private fun showConversation(conv: Conversation?) {
+    private fun showConversation(messages: List<Message>) {
         refreshHeader()
-        val messages = conv?.messages.orEmpty()
-        if (renderedMessages === messages) return
+        if (renderedMessages == messages) return
         renderedMessages = messages
         val atBottom = transcriptScroll.verticalScrollBar.let { it.value + it.visibleAmount >= it.maximum - 24 }
-        transcript.text = render(conv)
+        transcript.text = render(messages)
         if (atBottom || messages.lastOrNull()?.outgoing == true) {
             SwingUtilities.invokeLater { transcript.caretPosition = transcript.document.length }
         }
     }
 
-    private fun render(conv: Conversation?): String {
+    private fun render(messages: List<Message>): String {
         val dark = UIManager.getBoolean("laf.dark")
         val text = UIManager.getColor("Label.foreground").hex()
         val mutedColor = UIManager.getColor("Label.disabledForeground").hex()
@@ -248,20 +246,20 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
         val day = SimpleDateFormat("d MMM, HH:mm")
         val now = System.currentTimeMillis()
         val body = StringBuilder()
-        val messages = conv?.messages.orEmpty()
         if (messages.isEmpty()) {
             body.append("<p style='color:$mutedColor; margin:16px'>No messages yet. Say hello.</p>")
         }
         for (m in messages) {
-            val time = (if (now - m.timeMillis > 20 * 3600_000) day else fmt).format(Date(m.timeMillis))
-            val ticks = when (m.delivery) {
-                Delivery.QUEUED -> "sending"
-                Delivery.SENT -> "✓"
-                Delivery.DELIVERED -> "✓✓"
-                Delivery.FAILED -> "<font color='#d03b3b'>not delivered (${htmlEscape(m.error ?: "error")})</font>"
-                null -> ""
+            val time = (if (now - m.timestamp > 20 * 3600_000) day else fmt).format(Date(m.timestamp))
+            val ticks = when (m.status) {
+                MessageStatus.SENDING -> "sending"
+                MessageStatus.SENT -> "✓"
+                MessageStatus.DELIVERED -> "✓✓"
+                MessageStatus.READ -> "<font color='${Palette.online.hex()}'>✓✓ read</font>"
+                MessageStatus.FAILED -> "<font color='#d03b3b'>not delivered (${htmlEscape(m.error ?: "error")})</font>"
+                MessageStatus.UNREAD -> ""
             }
-            val meta = listOfNotNull(time, ticks.takeIf { m.outgoing && it.isNotEmpty() }, "from another device".takeIf { m.carbon }).joinToString(" · ")
+            val meta = listOfNotNull(time, ticks.takeIf { m.outgoing && it.isNotEmpty() }, "from another device".takeIf { m.fromOtherDevice }).joinToString(" · ")
             val align = if (m.outgoing) "right" else "left"
             body.append(
                 "<table width='100%' cellspacing='0' cellpadding='2'><tr><td align='$align'>" +
@@ -278,7 +276,7 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
         val jid = peer ?: return
         loadOlder.isEnabled = false
         uiScope.launch {
-            runCatching { session.loadHistory(jid) }.onFailure { error(it) }
+            runCatching { if (!chat.loadOlder(jid)) historyComplete += jid }.onFailure { error(it) }
             loadOlder.isEnabled = true
             refreshLoadOlder()
         }
@@ -288,36 +286,14 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
         val jid = peer ?: return
         val text = input.text.trim()
         if (text.isEmpty()) return
-        typingJob?.cancel()
-        composing = false // the message itself carries <active/>
         input.text = ""
-        uiScope.launch { runCatching { session.sendMessage(jid, text) }.onFailure { error(it) } }
+        chat.send(jid, text) // shows at once as "sending"; works offline too
     }
 
-    /** XEP-0085: "composing" when typing starts, "paused" after a few quiet seconds. */
+    /** The SDK sends "typing", then "paused" after a few quiet seconds. */
     private fun typed() {
         val jid = peer ?: return
-        if (input.text.isEmpty()) {
-            stopTyping()
-            return
-        }
-        if (!composing) {
-            composing = true
-            uiScope.launch { session.sendTyping(jid, ChatState.COMPOSING) }
-        }
-        typingJob?.cancel()
-        typingJob = uiScope.launch {
-            delay(4_000)
-            composing = false
-            session.sendTyping(jid, ChatState.PAUSED)
-        }
-    }
-
-    private fun stopTyping() {
-        typingJob?.cancel()
-        val jid = peer
-        if (composing && jid != null) uiScope.launch { session.sendTyping(jid, ChatState.ACTIVE) }
-        composing = false
+        if (input.text.isNotEmpty()) chat.typing(jid)
     }
 
     private fun setComposerEnabled(enabled: Boolean) {

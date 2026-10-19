@@ -2,6 +2,7 @@ package io.github.usmandurrany.tether.demo
 
 import io.github.usmandurrany.tether.core.BareJid
 import io.github.usmandurrany.tether.core.ConnectResult
+import io.github.usmandurrany.tether.im.MessageStatus
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -10,7 +11,6 @@ import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -72,28 +72,26 @@ class LiveServerTest {
 
                 // Subscription handshake: A adds B, B accepts (and asks back), A accepts.
                 a.addContact(bJid, "Bob", "Friends")
-                withTimeout(10_000) { b.subscriptionRequests.first { aBare in it } }
+                withTimeout(10_000) { b.chat.contactRequests.first { aBare in it } }
                 b.answerRequest(aBare, accept = true)
-                withTimeout(10_000) { a.subscriptionRequests.first { bJid in it } }
+                withTimeout(10_000) { a.chat.contactRequests.first { bJid in it } }
                 a.answerRequest(bJid, accept = true)
                 withTimeout(10_000) { a.im.presences.contacts.first { bJid in it } }
                 withTimeout(10_000) { a.im.roster.items.first { it[bJid]?.name == "Bob" } }
 
-                // A message, its server ack and B's delivery receipt.
+                // A message, its server ack, B's delivery receipt, and B's read marker once B opens the chat.
                 val text = "hello from the demo test ${System.nanoTime()}"
-                a.sendMessage(bJid, text)
-                withTimeout(10_000) { b.conversations.all.first { m -> m[aBare]?.messages?.any { it.body == text } == true } }
-                withTimeout(10_000) {
-                    a.conversations.all.first { m -> m[bJid]?.messages?.any { it.body == text && it.delivery == Delivery.DELIVERED } == true }
-                }
+                a.chat.send(bJid, text)
+                withTimeout(10_000) { b.chat.messages(aBare).first { list -> list.any { it.body == text } } }
+                withTimeout(10_000) { a.chat.messages(bJid).first { list -> list.any { it.body == text && it.status == MessageStatus.DELIVERED } } }
+                b.chat.openChat(aBare)
+                withTimeout(10_000) { a.chat.messages(bJid).first { list -> list.any { it.body == text && it.status == MessageStatus.READ } } }
 
                 // The archive returns it too, without a duplicate in the list.
                 if (a.im.history.available.value) {
                     delay(500)
-                    a.loadHistory(bJid)
-                    val conv = assertNotNull(a.conversations.all.value[bJid])
-                    assertTrue(conv.historyLoaded)
-                    assertEquals(1, conv.messages.count { it.body == text })
+                    a.chat.loadOlder(bJid)
+                    assertEquals(1, a.chat.messages(bJid).value.count { it.body == text })
                 }
                 println("Server features: " + a.client.session.value?.capabilities?.account?.features)
             } finally {

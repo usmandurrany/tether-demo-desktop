@@ -6,7 +6,7 @@ A small chat app for Linux, Windows and macOS that shows how to use the [Tether 
 | --- | --- | --- |
 | Connection settings | Address, password, optional host/port, direct TLS, trusting a self-signed certificate, PLAIN and SCRAM-SHA-1 opt-ins, "remember me" | `XmppConfig`, `TlsConfig`, `SaslConfig`, `TetherJvm.client`, `CredentialVault`, `FileKeyValueStore` |
 | Status bar | Live connection state, reconnecting, presence and status message, disconnect, log out | `XmppClient.state`, `Presences.set` / `hide` |
-| Chats | Contacts with presence, unread counts, add/rename/remove, subscription requests, messages with sent and delivered ticks, typing, history | `Roster`, `Presences`, `Messaging`, `History` |
+| Chats | Contacts with presence, unread counts, add/rename/remove, subscription requests, messages with sent, delivered and read ticks, typing, history | `TetherChat` |
 | Server | What the server offers on this session (Stream Management, carbons, archive, CSI, disco features), push registration | `XmppSession.capabilities`, `Carbons`, `Push` |
 | Debug log | Every stanza sent and received, credentials always redacted, optional upload to a [tether-debug](https://github.com/usmandurrany/tether-debug) log portal | `TetherDebug`, `MemorySink`, `ConsoleSink`, `RemoteLogSink` |
 
@@ -81,13 +81,13 @@ The log portal that **Log portal URL** uploads to is a separate project, [usmand
 
 ## The parts worth copying
 
-- **One client per account, features installed before connecting.** `DemoSession.create` builds the client with `TetherJvm.client`, installs `InstantMessaging`, starts collecting events, then connects. Events nobody collects yet are dropped.
+- **One `TetherChat` per account.** `DemoSession.create` builds the client with `TetherJvm.client` and wraps it in a `TetherChat` with every feature on. The chat screen only reads `chat.conversations`, `chat.allMessages` and `chat.typingContacts`, and calls `send`, `typing`, `openChat`, `closeChat` and `loadOlder`. Ticks, read markers, typing timers, history and de-duplication are the SDK's job.
 - **Desktop connection policy.** `BackgroundMode.STAY_CONNECTED`: the app stays connected when its window loses focus and only tells the server it is inactive (XEP-0352). Window focus drives `client.setForeground`.
 - **Network changes.** The JVM has no network event, so [`NetworkMonitor`](src/main/kotlin/io/github/usmandurrany/tether/demo/NetworkMonitor.kt) checks the interfaces every few seconds and calls `client.networkChanged`.
 - **First attempt versus reconnects.** `connect()` returns after the first attempt. The settings page stops on a failure and explains it; after a successful login, Tether reconnects on its own and the status bar shows it.
 - **Trusting a self-signed certificate.** `DemoSession.refusedCertificate` finds the fingerprint in the error, and the app retries with it pinned.
 - **Not remembering a login.** A small `KeyValueStore` wrapper drops the SCRAM keys while still letting the SDK save its other state.
-- **Message state.** [`Conversations`](src/main/kotlin/io/github/usmandurrany/tether/demo/Conversations.kt) turns `MessageEvent`s and archive pages into a list with delivery ticks, and removes duplicates between live messages and history.
+- **Read markers only while you can see the chat.** Window focus drives `client.setForeground`, and the SDK only marks an open chat read while the app is in the foreground.
 
 ## Tests
 
@@ -99,7 +99,7 @@ TETHER_B_JID=bob@example.com TETHER_B_PASSWORD=... \
 ./gradlew test
 ```
 
-Add `TETHER_HOST` / `TETHER_PORT` when the domain has no SRV records, and `TETHER_ALLOW_SCRAM_SHA1=true` for servers that offer nothing newer. The test trusts a self-signed certificate the same way the app does. It covers the subscription handshake, presence, a message with its server ack and delivery receipt, history without duplicates, signing in again with saved keys, and log out.
+Add `TETHER_HOST` / `TETHER_PORT` when the domain has no SRV records, and `TETHER_ALLOW_SCRAM_SHA1=true` for servers that offer nothing newer. The test trusts a self-signed certificate the same way the app does. It covers the subscription handshake, presence, a message with its server ack, delivery receipt and read marker, history without duplicates, signing in again with saved keys, and log out.
 
 ## License
 

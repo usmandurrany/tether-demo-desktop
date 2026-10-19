@@ -19,10 +19,10 @@ import io.github.usmandurrany.tether.debug.RemoteLogConfig
 import io.github.usmandurrany.tether.debug.RemoteLogSink
 import io.github.usmandurrany.tether.debug.TetherDebug
 import io.github.usmandurrany.tether.debug.http
-import io.github.usmandurrany.tether.im.ChatState
+import io.github.usmandurrany.tether.im.ChatFeatures
 import io.github.usmandurrany.tether.im.InstantMessaging
-import io.github.usmandurrany.tether.im.StoredRoster
 import io.github.usmandurrany.tether.im.SubscriptionEvent
+import io.github.usmandurrany.tether.im.TetherChat
 import io.github.usmandurrany.tether.sasl.ScramKeys
 import io.github.usmandurrany.tether.transport.TlsVerificationException
 import kotlinx.coroutines.CoroutineScope
@@ -39,9 +39,11 @@ import kotlinx.coroutines.withTimeoutOrNull
 /**
  * One signed-in account: the whole SDK integration of this demo lives here.
  *
- * Order matters: create the client, install features ([InstantMessaging]),
- * start collecting events, and only then call [connect]. Events nobody
- * collects yet are dropped.
+ * [chat] ([TetherChat]) does the chat work: message list and ticks, read
+ * markers, typing, history, contacts. The screens read its flows and call
+ * `send`, `typing`, `openChat` and `closeChat`. This class only adds what is
+ * specific to the demo: debug logging, the "remember me" store and a network
+ * monitor.
  */
 class DemoSession private constructor(
     val settings: ConnectionSettings,
@@ -49,23 +51,24 @@ class DemoSession private constructor(
     val debug: TetherDebug,
     val logs: MemorySink,
     val remoteLogs: RemoteLogSink?,
-    val client: XmppClient,
-    val im: InstantMessaging,
+    val chat: TetherChat,
     private val scope: CoroutineScope,
 ) {
-    val account: BareJid get() = client.account
-    val conversations = Conversations()
+    val client: XmppClient get() = chat.client
+    val account: BareJid get() = chat.account
 
-    private val _requests = MutableStateFlow<Map<BareJid, String?>>(emptyMap())
+    /** The protocol-level features, for the server panel and presence menu. */
+    val im: InstantMessaging get() = chat.im
 
-    /** People asking to see our presence, with the note they sent; answer with [answerRequest]. */
-    val subscriptionRequests: StateFlow<Map<BareJid, String?>> = _requests.asStateFlow()
+    private val _notes = MutableStateFlow<Map<BareJid, String>>(emptyMap())
+
+    /** The note sent with each contact request, to show next to [TetherChat.contactRequests]. */
+    val requestNotes: StateFlow<Map<BareJid, String>> = _notes.asStateFlow()
 
     init {
-        scope.launch { im.messaging.events.collect(conversations::onEvent) }
         scope.launch {
             im.presences.subscriptions.collect { event ->
-                if (event is SubscriptionEvent.Requested) _requests.update { it + (event.from to event.status) }
+                if (event is SubscriptionEvent.Requested) event.status?.let { note -> _notes.update { it + (event.from to note) } }
                 debug.log(LogLevel.INFO, "app", "Subscription: $event")
             }
         }
@@ -73,47 +76,24 @@ class DemoSession private constructor(
         NetworkMonitor(client).start(scope)
     }
 
-    /**
-     * Accepting also asks to see their presence back and adds them to the roster,
-     * which is what most chat apps do.
-     */
+    /** Accepting also asks to see their presence back, which is what most chat apps do. */
     suspend fun answerRequest(from: BareJid, accept: Boolean) {
-        _requests.update { it - from }
-        if (accept) {
-            im.presences.approve(from)
-            if (im.roster.items.value[from] == null) im.roster.set(from)
-            im.presences.request(from)
-        } else {
-            im.presences.deny(from)
-        }
+        if (accept) chat.approve(from) else chat.deny(from)
+        _notes.update { it - from }
     }
 
     suspend fun addContact(jid: BareJid, name: String?, group: String?) {
-        im.roster.set(jid, name = name, groups = setOfNotNull(group))
-        im.presences.request(jid)
+        // TetherChat.addContact has no groups; the roster call underneath does.
+        if (group == null) {
+            chat.addContact(jid, name)
+        } else {
+            im.roster.set(jid, name = name, groups = setOf(group))
+            im.presences.request(jid)
+        }
     }
 
     /** First attempt; after it the client keeps reconnecting by itself until [disconnect]. */
-    suspend fun connect(): ConnectResult = client.connect()
-
-    suspend fun sendMessage(to: BareJid, body: String) {
-        val id = im.messaging.send(to, body)
-        // Without Stream Management (XEP-0198) the server never acks, so "on the wire" is as good as it gets.
-        val noAcks = client.session.value?.let { it.streamManagement == null } ?: false
-        conversations.addOutgoing(to, id, body, if (noAcks) Delivery.SENT else Delivery.QUEUED)
-    }
-
-    suspend fun sendTyping(to: BareJid, state: ChatState) {
-        runCatching { im.messaging.sendChatState(to, state) }
-    }
-
-    /** Loads the newest archive page for [peer], or the page before what is shown. */
-    suspend fun loadHistory(peer: BareJid) {
-        if (!im.history.available.value) return
-        val conv = conversations.all.value[peer]
-        val page = im.history.fetch(with = peer, before = conv?.historyCursor.takeIf { conv?.historyLoaded == true }, max = 25)
-        conversations.addHistory(peer, page)
-    }
+    suspend fun connect(): ConnectResult = chat.connect()
 
     /** Ends the connection but keeps the saved login keys, so the next start needs no password. */
     suspend fun disconnect() {
@@ -131,7 +111,7 @@ class DemoSession private constructor(
     }
 
     private fun shutdown() {
-        client.close()
+        chat.close()
         remoteLogs?.close()
         scope.cancel()
     }
@@ -177,9 +157,10 @@ class DemoSession private constructor(
                 store = store,
                 logger = debug.trafficLogger(),
             )
-            val im = InstantMessaging(client, rosterStore = StoredRoster(store, config.jid))
+            // Every chat feature on: ticks, read markers, typing, contacts, presence, carbons, history.
+            val chat = TetherChat(client, ChatFeatures(), store = store)
             debug.log(LogLevel.INFO, "app", "Signing in as ${config.jid} via ${config.host ?: "DNS SRV"}")
-            return DemoSession(settings, store, debug, logs, remote, client, im, scope)
+            return DemoSession(settings, store, debug, logs, remote, chat, scope)
         }
 
         /** The SHA-256 of a certificate the client refused, found anywhere in the error's causes. */
