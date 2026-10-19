@@ -3,12 +3,11 @@ kotlin = "2.4.20"
 coroutines = "1.11.0"
 flatlaf = "3.7.2"
 conscrypt = "2.7.0"
-tether = "0.1.0-SNAPSHOT"
 
 [libraries]
-tether-core = { module = "io.github.usmandurrany.tether:tether-core", version.ref = "tether" }
-tether-im = { module = "io.github.usmandurrany.tether:tether-im", version.ref = "tether" }
-tether-debug = { module = "io.github.usmandurrany.tether:tether-debug", version.ref = "tether" }
+tether-core = { module = "io.github.usmandurrany.tether:tether-core" }
+tether-im = { module = "io.github.usmandurrany.tether:tether-im" }
+tether-debug = { module = "io.github.usmandurrany.tether:tether-debug" }
 kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "coroutines" }
 flatlaf = { module = "com.formdev:flatlaf", version.ref = "flatlaf" }
 conscrypt-openjdk = { module = "org.conscrypt:conscrypt-openjdk-uber", version.ref = "conscrypt" }

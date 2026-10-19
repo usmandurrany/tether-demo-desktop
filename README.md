@@ -10,11 +10,11 @@ A small chat app for Linux, Windows and macOS that shows how to use the [Tether 
 | Server | What the server offers on this session (Stream Management, carbons, archive, CSI, disco features), push registration | `XmppSession.capabilities`, `Carbons`, `Push` |
 | Debug log | Every stanza sent and received, credentials always redacted, optional upload to a [tether-debug](https://github.com/usmandurrany/tether-debug) log portal | `TetherDebug`, `MemorySink`, `ConsoleSink`, `RemoteLogSink` |
 
-The UI is plain Swing with the [FlatLaf](https://www.formdev.com/flatlaf/) look, so the app needs nothing beyond Maven Central and starts fast. Everything the SDK does lives in one file, [`DemoSession.kt`](src/main/kotlin/io/github/usmandurrany/tether/demo/DemoSession.kt); the `ui/` package only draws it.
+The UI is plain Swing with the [FlatLaf](https://www.formdev.com/flatlaf/) look, so the app starts fast and needs no native libraries. Everything the SDK does lives in one file, [`DemoSession.kt`](src/main/kotlin/io/github/usmandurrany/tether/demo/DemoSession.kt); the `ui/` package only draws it.
 
 ## Run it
 
-You need JDK 17 or newer. Nothing else: Gradle comes with the wrapper and the SDK is bundled (see below).
+You need JDK 17 or newer and an internet connection. Nothing else: Gradle comes with the wrapper, and the first build fetches the SDK from GitHub and compiles it (see below).
 
 ```sh
 git clone https://github.com/usmandurrany/tether-demo-desktop
@@ -62,22 +62,22 @@ The **Debug log** tab always shows the traffic. On the settings page you can als
 
 ## How the SDK is included
 
-Tether is not on Maven Central yet, so this repository carries a prebuilt copy of its JVM artifacts in [`sdk-repo/`](sdk-repo), a plain Maven repository that `settings.gradle.kts` reads before Maven Central. [`sdk-repo/SDK_VERSION`](sdk-repo/SDK_VERSION) names the tether-xmpp commit it was built from. The app depends on it by the same coordinates an app will use once Tether is published:
+Tether is not on Maven Central yet, so Gradle builds it from its public repository, [usmandurrany/tether-xmpp](https://github.com/usmandurrany/tether-xmpp). [`settings.gradle.kts`](settings.gradle.kts) declares the repository as a Gradle source dependency: on the first build Gradle clones it into `.gradle/vcs-1` and compiles the JVM parts of the SDK (no Kotlin/Native or Android SDK needed); later builds reuse that copy. The app asks for the SDK by the same coordinates it will use once Tether is published, so moving to a released version only means deleting the `sourceControl` block:
 
 ```kotlin
-implementation("io.github.usmandurrany.tether:tether-core:0.1.0-SNAPSHOT")
-implementation("io.github.usmandurrany.tether:tether-im:0.1.0-SNAPSHOT")
-implementation("io.github.usmandurrany.tether:tether-debug:0.1.0-SNAPSHOT")
+implementation("io.github.usmandurrany.tether:tether-core")  { version { branch = "main" } }
+implementation("io.github.usmandurrany.tether:tether-im")    { version { branch = "main" } }
+implementation("io.github.usmandurrany.tether:tether-debug") { version { branch = "main" } }
 ```
 
-To build against a newer SDK, check out tether-xmpp next to this folder and refresh the copy (only the JVM artifacts are built, so no Kotlin/Native toolchain is needed):
+The build follows the SDK's `main` branch. To try another branch, or to work on the SDK and the app together:
 
 ```sh
-scripts/update-sdk.sh ../tether-xmpp                                          # Linux, macOS
-powershell -ExecutionPolicy Bypass -File scripts\update-sdk.ps1 ..\tether-xmpp  # Windows
+./gradlew run -Ptether.branch=my-branch          # another branch of tether-xmpp
+./gradlew run -Ptether.sdkPath=../tether-xmpp    # your own checkout, rebuilt on every change
 ```
 
-Or publish the SDK with `./gradlew publishToMavenLocal` in tether-xmpp and build this app with `./gradlew run -Ptether.mavenLocal`.
+The log portal that **Log portal URL** uploads to is a separate project, [usmandurrany/tether-debug](https://github.com/usmandurrany/tether-debug), which you run yourself with Docker.
 
 ## The parts worth copying
 

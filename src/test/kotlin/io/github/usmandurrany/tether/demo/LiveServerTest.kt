@@ -65,8 +65,8 @@ class LiveServerTest {
             val aBare = a.account
             try {
                 // Start clean, so the test can run again on the same accounts.
-                a.im.roster.remove(bJid)
-                b.im.roster.remove(aBare)
+                if (bJid in a.im.roster.items.value) a.im.roster.remove(bJid)
+                if (aBare in b.im.roster.items.value) b.im.roster.remove(aBare)
                 withTimeout(10_000) { a.im.roster.items.first { bJid !in it } }
                 withTimeout(10_000) { b.im.roster.items.first { aBare !in it } }
 

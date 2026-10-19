@@ -17,9 +17,12 @@ java {
 }
 
 dependencies {
-    implementation(libs.tether.core)
-    implementation(libs.tether.im)
-    implementation(libs.tether.debug)
+    // Built from the SDK's GitHub repository (see settings.gradle.kts).
+    // Pass -Ptether.branch=<branch> to try another branch of the SDK.
+    val sdkBranch = providers.gradleProperty("tether.branch").getOrElse("main")
+    for (sdk in listOf(libs.tether.core, libs.tether.im, libs.tether.debug)) {
+        implementation(sdk) { version { branch = sdkBranch } }
+    }
     // Optional: lets TLS 1.3 logins use the stronger tls-exporter channel binding.
     // Without it the JDK's TLS is used with tls-server-end-point.
     runtimeOnly(libs.conscrypt.openjdk)
