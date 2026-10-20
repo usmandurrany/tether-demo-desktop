@@ -105,8 +105,8 @@ The log portal that **Log portal URL** uploads to is a separate project, [usmand
 - **Desktop connection policy.** `BackgroundMode.STAY_CONNECTED`: the app stays connected when its window loses focus and only tells the server it is inactive (XEP-0352). Window focus drives `client.setForeground`.
 - **Network changes.** The JVM has no network event, so the SDK's `TetherJvm.client` checks the interfaces every few seconds by itself (`JvmNetworkMonitor`) and reconnects when the network changes. The app writes no code for it.
 - **First attempt versus reconnects.** `connect()` returns after the first attempt. The settings page stops on a failure and explains it; after a successful login, Tether reconnects on its own and the status bar shows it.
-- **Trusting a self-signed certificate.** `DemoSession.refusedCertificate` finds the fingerprint in the error, and the app retries with it pinned.
-- **Not remembering a login.** A small `KeyValueStore` wrapper drops the SCRAM keys while still letting the SDK save its other state.
+- **Trusting a self-signed certificate.** A failed `connect()` carries `untrustedCertificate`, the refused certificate's fingerprint; the app asks, then retries with it pinned.
+- **Not remembering a login.** `TetherJvm.client(rememberLogin = false)` saves no SCRAM keys and deletes old ones, while the SDK still saves its other state.
 - **Read markers only while you can see the chat.** Window focus drives `client.setForeground`, and the SDK only marks an open chat read while the app is in the foreground.
 
 ## Tests
