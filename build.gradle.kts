@@ -19,7 +19,7 @@ java {
 dependencies {
     // Built from the SDK's GitHub repository (see settings.gradle.kts).
     // Pass -Ptether.branch=<branch> to try another branch of the SDK.
-    val sdkBranch = providers.gradleProperty("tether.branch").getOrElse("claude/project-thread-dgb99o")
+    val sdkBranch = providers.gradleProperty("tether.branch").getOrElse("main")
     for (sdk in listOf(libs.tether.core, libs.tether.im, libs.tether.debug)) {
         implementation(sdk) { version { branch = sdkBranch } }
     }
