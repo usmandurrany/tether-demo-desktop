@@ -19,12 +19,12 @@ import io.github.usmandurrany.tether.debug.RemoteLogConfig
 import io.github.usmandurrany.tether.debug.RemoteLogSink
 import io.github.usmandurrany.tether.debug.TetherDebug
 import io.github.usmandurrany.tether.debug.http
-import io.github.usmandurrany.tether.im.ChatState
+import io.github.usmandurrany.tether.im.ChatFeatures
+import io.github.usmandurrany.tether.im.FileMessageStore
 import io.github.usmandurrany.tether.im.InstantMessaging
-import io.github.usmandurrany.tether.im.StoredRoster
 import io.github.usmandurrany.tether.im.SubscriptionEvent
+import io.github.usmandurrany.tether.im.TetherChat
 import io.github.usmandurrany.tether.sasl.ScramKeys
-import io.github.usmandurrany.tether.transport.TlsVerificationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -39,9 +39,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 /**
  * One signed-in account: the whole SDK integration of this demo lives here.
  *
- * Order matters: create the client, install features ([InstantMessaging]),
- * start collecting events, and only then call [connect]. Events nobody
- * collects yet are dropped.
+ * [chat] ([TetherChat]) does the chat work: message list and ticks, read
+ * markers, typing, history, contacts. The screens read its flows and call
+ * `send`, `typing`, `openChat` and `closeChat`. This class only adds what is
+ * specific to the demo: debug logging and its settings.
  */
 class DemoSession private constructor(
     val settings: ConnectionSettings,
@@ -49,71 +50,42 @@ class DemoSession private constructor(
     val debug: TetherDebug,
     val logs: MemorySink,
     val remoteLogs: RemoteLogSink?,
-    val client: XmppClient,
-    val im: InstantMessaging,
+    val chat: TetherChat,
     private val scope: CoroutineScope,
 ) {
-    val account: BareJid get() = client.account
-    val conversations = Conversations()
+    val client: XmppClient get() = chat.client
+    val account: BareJid get() = chat.account
 
-    private val _requests = MutableStateFlow<Map<BareJid, String?>>(emptyMap())
+    /** The protocol-level features, for the server panel and presence menu. */
+    val im: InstantMessaging get() = chat.im
 
-    /** People asking to see our presence, with the note they sent; answer with [answerRequest]. */
-    val subscriptionRequests: StateFlow<Map<BareJid, String?>> = _requests.asStateFlow()
+    private val _notes = MutableStateFlow<Map<BareJid, String>>(emptyMap())
+
+    /** The note sent with each contact request, to show next to [TetherChat.contactRequests]. */
+    val requestNotes: StateFlow<Map<BareJid, String>> = _notes.asStateFlow()
 
     init {
-        scope.launch { im.messaging.events.collect(conversations::onEvent) }
         scope.launch {
             im.presences.subscriptions.collect { event ->
-                if (event is SubscriptionEvent.Requested) _requests.update { it + (event.from to event.status) }
-                debug.log(LogLevel.INFO, "app", "Subscription: $event")
+                if (event is SubscriptionEvent.Requested) event.status?.let { note -> _notes.update { it + (event.from to note) } }
+                val auto = event is SubscriptionEvent.Requested && chat.features.autoAcceptContacts
+                debug.log(LogLevel.INFO, "app", "Subscription: $event" + if (auto) " (accepted automatically)" else "")
             }
         }
         debug.trackConnection(client.state, scope)
-        NetworkMonitor(client).start(scope)
     }
 
-    /**
-     * Accepting also asks to see their presence back and adds them to the roster,
-     * which is what most chat apps do.
-     */
+    /** Accepting also asks to see their presence back, which is what most chat apps do. */
     suspend fun answerRequest(from: BareJid, accept: Boolean) {
-        _requests.update { it - from }
-        if (accept) {
-            im.presences.approve(from)
-            if (im.roster.items.value[from] == null) im.roster.set(from)
-            im.presences.request(from)
-        } else {
-            im.presences.deny(from)
-        }
+        if (accept) chat.approve(from) else chat.deny(from)
+        _notes.update { it - from }
     }
 
-    suspend fun addContact(jid: BareJid, name: String?, group: String?) {
-        im.roster.set(jid, name = name, groups = setOfNotNull(group))
-        im.presences.request(jid)
-    }
+    suspend fun addContact(jid: BareJid, name: String?, group: String?) =
+        chat.addContact(jid, name, groups = group?.let(::setOf))
 
     /** First attempt; after it the client keeps reconnecting by itself until [disconnect]. */
-    suspend fun connect(): ConnectResult = client.connect()
-
-    suspend fun sendMessage(to: BareJid, body: String) {
-        val id = im.messaging.send(to, body)
-        // Without Stream Management (XEP-0198) the server never acks, so "on the wire" is as good as it gets.
-        val noAcks = client.session.value?.let { it.streamManagement == null } ?: false
-        conversations.addOutgoing(to, id, body, if (noAcks) Delivery.SENT else Delivery.QUEUED)
-    }
-
-    suspend fun sendTyping(to: BareJid, state: ChatState) {
-        runCatching { im.messaging.sendChatState(to, state) }
-    }
-
-    /** Loads the newest archive page for [peer], or the page before what is shown. */
-    suspend fun loadHistory(peer: BareJid) {
-        if (!im.history.available.value) return
-        val conv = conversations.all.value[peer]
-        val page = im.history.fetch(with = peer, before = conv?.historyCursor.takeIf { conv?.historyLoaded == true }, max = 25)
-        conversations.addHistory(peer, page)
-    }
+    suspend fun connect(): ConnectResult = chat.connect()
 
     /** Ends the connection but keeps the saved login keys, so the next start needs no password. */
     suspend fun disconnect() {
@@ -126,12 +98,14 @@ class DemoSession private constructor(
     suspend fun logOut() {
         withTimeoutOrNull(6_000) { client.disconnect() }
         CredentialVault(store).clear(account)
+        // Signing out also forgets this account's chats on this computer.
+        runCatching { FileMessageStore(AppPaths.messagesFile(account.toString())).clear() }
         remoteLogs?.let { withTimeoutOrNull(3_000) { it.flush() } }
         shutdown()
     }
 
     private fun shutdown() {
-        client.close()
+        chat.close()
         remoteLogs?.close()
         scope.cancel()
     }
@@ -165,9 +139,8 @@ class DemoSession private constructor(
             }
 
             val config = settings.toXmppConfig(password, savedKeys)
-            // Without "remember me", nothing that could log in again is written to disk.
-            val store: KeyValueStore = if (settings.rememberLogin) fileStore else WithoutCredentials(fileStore)
-            if (!settings.rememberLogin) scope.launch { CredentialVault(fileStore).clear(config.jid) }
+            val store: KeyValueStore = fileStore
+            // Follows the network by itself. Without "remember me", no login keys are written to disk.
             val client = TetherJvm.client(
                 config,
                 scope,
@@ -176,34 +149,19 @@ class DemoSession private constructor(
                 policy = ClientPolicy(reconnect = ReconnectPolicy(backgroundMode = BackgroundMode.STAY_CONNECTED)),
                 store = store,
                 logger = debug.trafficLogger(),
+                rememberLogin = settings.rememberLogin,
             )
-            val im = InstantMessaging(client, rosterStore = StoredRoster(store, config.jid))
+            // Every chat feature on: ticks, read markers, typing, contacts, presence, carbons, history,
+            // last seen, delete for everyone and profiles. Auto-accept is the SDK's one opt-in feature.
+            val features = ChatFeatures(autoAcceptContacts = settings.autoAcceptContacts, profiles = settings.profiles)
+            // The SDK's file store keeps ticks, read state, deletions and photos across restarts.
+            val messages = if (settings.keepMessages) FileMessageStore(AppPaths.messagesFile(config.jid.toString())) else null
+            val chat = TetherChat(client, features, store = store, messageStore = messages)
             debug.log(LogLevel.INFO, "app", "Signing in as ${config.jid} via ${config.host ?: "DNS SRV"}")
-            return DemoSession(settings, store, debug, logs, remote, client, im, scope)
+            return DemoSession(settings, store, debug, logs, remote, chat, scope)
         }
-
-        /** The SHA-256 of a certificate the client refused, found anywhere in the error's causes. */
-        fun refusedCertificate(error: Throwable): String? =
-            generateSequence(error) { it.cause }.filterIsInstance<TlsVerificationException>().firstOrNull()?.peerCertificateSha256
 
         const val APP_ID = "io.github.usmandurrany.tether.demo"
         const val APP_VERSION = "0.1.0"
-    }
-}
-
-/**
- * A store that drops the SCRAM login keys, for sign-ins without "remember me".
- * The prefix is the one [CredentialVault] uses for its keys.
- */
-private class WithoutCredentials(private val inner: KeyValueStore) : KeyValueStore {
-    override suspend fun get(key: String): String? = if (key.startsWith(CREDENTIAL_PREFIX)) null else inner.get(key)
-
-    override suspend fun put(key: String, value: String?) {
-        // Still clear old keys, so unticking "remember me" also forgets the last saved login.
-        if (key.startsWith(CREDENTIAL_PREFIX)) inner.put(key, null) else inner.put(key, value)
-    }
-
-    companion object {
-        const val CREDENTIAL_PREFIX = "tether.scram."
     }
 }

@@ -113,7 +113,7 @@ class AppWindow(private var settings: ConnectionSettings) {
                     // The client would keep retrying on its own; on the settings page it's clearer to stop and say why.
                     created.disconnect()
                     settingsPage.setBusy(false)
-                    val fingerprint = DemoSession.refusedCertificate(result.error)
+                    val fingerprint = result.untrustedCertificate
                     if (fingerprint != null && settings.normalizedPin() != fingerprint && askToTrust(fingerprint)) {
                         val pinned = settings.copy(pinnedCertificate = fingerprint)
                         settingsPage.load(pinned)

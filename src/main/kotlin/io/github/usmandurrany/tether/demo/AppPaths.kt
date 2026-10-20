@@ -21,4 +21,7 @@ object AppPaths {
 
     /** Tether's own state: stream resumption, unsent messages, keepalive timing, saved login keys, roster. */
     val tetherStateFile: Path get() = dataDir.resolve("tether-state.properties")
+
+    /** One account's chats, kept by the SDK's FileMessageStore. */
+    fun messagesFile(account: String): Path = dataDir.resolve("messages").resolve(account.replace(Regex("[^A-Za-z0-9@._-]"), "_") + ".messages")
 }

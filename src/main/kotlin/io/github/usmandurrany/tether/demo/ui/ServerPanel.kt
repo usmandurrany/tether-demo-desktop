@@ -61,7 +61,7 @@ class ServerPanel(private val session: DemoSession, private val uiScope: Corouti
             JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
                 add(JButton("Register").apply { addActionListener { register() } })
                 add(javax.swing.Box.createHorizontalStrut(8))
-                add(JButton("Unregister").apply { addActionListener { uiScope.launch { runCatching { session.im.push.unregister() } } } })
+                add(JButton("Unregister").apply { addActionListener { uiScope.launch { runCatching { session.chat.unregisterPush() } } } })
             },
         )
         form.finish()
@@ -86,7 +86,7 @@ class ServerPanel(private val session: DemoSession, private val uiScope: Corouti
             }.collect { show(it) }
         }
         uiScope.launch {
-            im.push.state.collect { state ->
+            session.chat.pushState.collect { state ->
                 pushState.text = when (state) {
                     PushState.Off -> "Not registered"
                     PushState.Unsupported -> "This server doesn't offer push (XEP-0357)"
@@ -145,6 +145,6 @@ class ServerPanel(private val session: DemoSession, private val uiScope: Corouti
             val key = line.substringBefore('=', "").trim()
             if (key.isEmpty()) null else key to line.substringAfter('=').trim()
         }.toMap()
-        uiScope.launch { runCatching { session.im.push.register(PushTarget(service, node, options, pushCreate.isSelected)) } }
+        uiScope.launch { runCatching { session.chat.registerPush(PushTarget(service, node, options, pushCreate.isSelected)) } }
     }
 }

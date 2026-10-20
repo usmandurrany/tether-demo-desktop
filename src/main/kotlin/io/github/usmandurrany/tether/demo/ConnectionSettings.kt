@@ -41,6 +41,12 @@ data class ConnectionSettings(
     val portalKey: String = "",
     val portalLabel: String = "",
     val darkTheme: Boolean = false,
+    /** Accept every contact request at once (ChatFeatures.autoAcceptContacts). Off, like the SDK's default. */
+    val autoAcceptContacts: Boolean = false,
+    /** Keep chats in a file on this computer (the SDK's FileMessageStore), so they survive a restart. */
+    val keepMessages: Boolean = true,
+    /** Names and profile pictures (ChatFeatures.profiles, vCard). On, like the SDK's default. */
+    val profiles: Boolean = true,
     /** Random, created once per install; the log portal groups uploads by it. */
     val installId: String = UUID.randomUUID().toString(),
 ) {
@@ -100,6 +106,9 @@ data class ConnectionSettings(
         p["portalKey"] = portalKey.trim()
         p["portalLabel"] = portalLabel.trim()
         p["darkTheme"] = darkTheme.toString()
+        p["autoAcceptContacts"] = autoAcceptContacts.toString()
+        p["keepMessages"] = keepMessages.toString()
+        p["profiles"] = profiles.toString()
         p["installId"] = installId
         Files.createDirectories(file.toAbsolutePath().parent)
         Files.newOutputStream(file).use { p.store(it, "Tether demo settings (no password is ever stored here)") }
@@ -128,6 +137,9 @@ data class ConnectionSettings(
                 portalKey = s("portalKey"),
                 portalLabel = s("portalLabel"),
                 darkTheme = b("darkTheme", false),
+                autoAcceptContacts = b("autoAcceptContacts", false),
+                keepMessages = b("keepMessages", true),
+                profiles = b("profiles", true),
                 installId = s("installId").ifEmpty { defaults.installId },
             )
         }

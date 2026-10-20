@@ -6,7 +6,8 @@ A small chat app for Linux, Windows and macOS that shows how to use the [Tether 
 | --- | --- | --- |
 | Connection settings | Address, password, optional host/port, direct TLS, trusting a self-signed certificate, PLAIN and SCRAM-SHA-1 opt-ins, "remember me" | `XmppConfig`, `TlsConfig`, `SaslConfig`, `TetherJvm.client`, `CredentialVault`, `FileKeyValueStore` |
 | Status bar | Live connection state, reconnecting, presence and status message, disconnect, log out | `XmppClient.state`, `Presences.set` / `hide` |
-| Chats | Contacts with presence, unread counts, add/rename/remove, subscription requests, messages with sent and delivered ticks, typing, history | `Roster`, `Presences`, `Messaging`, `History` |
+| Chats | Contacts with presence and last seen, unread counts, add/rename/remove, subscription requests (or auto-accept), messages with sent, delivered and read ticks, typing, history, delete for everyone and for me, contacts' names and pictures from their profiles | `TetherChat`, `ChatFeatures` |
+| Attach | Photos, videos, locations and any custom type, sent as their own tags next to the caption and drawn on the other side | `MessageData`, `chat.send(to, text, data)`, `message.data("photo")` |
 | Server | What the server offers on this session (Stream Management, carbons, archive, CSI, disco features), push registration | `XmppSession.capabilities`, `Carbons`, `Push` |
 | Debug log | Every stanza sent and received, credentials always redacted, optional upload to a [tether-debug](https://github.com/usmandurrany/tether-debug) log portal | `TetherDebug`, `MemorySink`, `ConsoleSink`, `RemoteLogSink` |
 
@@ -42,6 +43,25 @@ With **Remember me** on, the app keeps the SCRAM login keys (never the password)
 
 Tether never connects without TLS.
 
+## Photos, videos, locations and custom data
+
+**Attach** in the chat sends a message with the SDK's custom data: a caption in the body, and the details as separate tags, for example a photo's link, size in bytes and dimensions. The other side reads them back and draws a photo, a video link or a map link. **Custom data** sends any type with any keys and values, and the receiver shows exactly what arrived. All of it is in [`Attachments.kt`](src/main/kotlin/io/github/usmandurrany/tether/demo/Attachments.kt):
+
+```kotlin
+chat.send(bob, "Look at this view", MessageData("photo", "url" to url, "width" to 800, "height" to 533, "size" to 48213))
+
+val photo = message.data("photo")   // on the other side
+photo?.string("url"); photo?.int("width")
+```
+
+The demo has no file hosting, so it sends links to photos and videos that are already online, and reads their size from the web server.
+
+## Chat settings
+
+- **Accept contact requests automatically** turns on `ChatFeatures(autoAcceptContacts = true)`. It is off by default, as in the SDK.
+- **Profiles and pictures** turns `ChatFeatures.profiles` (vCard) on or off. It is on by default, as in the SDK. **Profile…** next to your address edits your name, email, phone, "about" line and picture; a picked image is cropped square and made a 192×192 JPEG so it fits in one stanza.
+- **Keep chats on this computer** uses the SDK's `FileMessageStore` (one file per account in `messages/`), so ticks, read state, deletions and photos survive a restart. **Log out** deletes the file.
+
 ## Where files go
 
 | OS | Folder |
@@ -50,7 +70,7 @@ Tether never connects without TLS.
 | Windows | `%APPDATA%\TetherDemo` |
 | macOS | `~/Library/Application Support/TetherDemo` |
 
-`settings.properties` holds the settings page (no password). `tether-state.properties` is the SDK's own state: stream resumption, unsent messages, keepalive timing, the roster and, with Remember me, the login keys. It is readable by your user only, but not encrypted. Pass `-Dtether.demo.home=<folder>` to use another folder, for example to run two accounts side by side:
+`settings.properties` holds the settings page (no password). `messages/` holds each account's chats when **Keep chats on this computer** is on. `tether-state.properties` is the SDK's own state: stream resumption, unsent messages, keepalive timing, the roster and, with Remember me, the login keys. It is readable by your user only, but not encrypted. Pass `-Dtether.demo.home=<folder>` to use another folder, for example to run two accounts side by side:
 
 ```sh
 JAVA_OPTS="-Dtether.demo.home=/tmp/bob" ./gradlew run
@@ -81,13 +101,13 @@ The log portal that **Log portal URL** uploads to is a separate project, [usmand
 
 ## The parts worth copying
 
-- **One client per account, features installed before connecting.** `DemoSession.create` builds the client with `TetherJvm.client`, installs `InstantMessaging`, starts collecting events, then connects. Events nobody collects yet are dropped.
+- **One `TetherChat` per account.** `DemoSession.create` builds the client with `TetherJvm.client` and wraps it in a `TetherChat` with every feature on. The chat screen only reads `chat.conversations`, `chat.allMessages` and `chat.typingContacts`, and calls `send`, `typing`, `openChat`, `closeChat` and `loadOlder`. Ticks, read markers, typing timers, history and de-duplication are the SDK's job.
 - **Desktop connection policy.** `BackgroundMode.STAY_CONNECTED`: the app stays connected when its window loses focus and only tells the server it is inactive (XEP-0352). Window focus drives `client.setForeground`.
-- **Network changes.** The JVM has no network event, so [`NetworkMonitor`](src/main/kotlin/io/github/usmandurrany/tether/demo/NetworkMonitor.kt) checks the interfaces every few seconds and calls `client.networkChanged`.
+- **Network changes.** The JVM has no network event, so the SDK's `TetherJvm.client` checks the interfaces every few seconds by itself (`JvmNetworkMonitor`) and reconnects when the network changes. The app writes no code for it.
 - **First attempt versus reconnects.** `connect()` returns after the first attempt. The settings page stops on a failure and explains it; after a successful login, Tether reconnects on its own and the status bar shows it.
-- **Trusting a self-signed certificate.** `DemoSession.refusedCertificate` finds the fingerprint in the error, and the app retries with it pinned.
-- **Not remembering a login.** A small `KeyValueStore` wrapper drops the SCRAM keys while still letting the SDK save its other state.
-- **Message state.** [`Conversations`](src/main/kotlin/io/github/usmandurrany/tether/demo/Conversations.kt) turns `MessageEvent`s and archive pages into a list with delivery ticks, and removes duplicates between live messages and history.
+- **Trusting a self-signed certificate.** A failed `connect()` carries `untrustedCertificate`, the refused certificate's fingerprint; the app asks, then retries with it pinned.
+- **Not remembering a login.** `TetherJvm.client(rememberLogin = false)` saves no SCRAM keys and deletes old ones, while the SDK still saves its other state.
+- **Read markers only while you can see the chat.** Window focus drives `client.setForeground`, and the SDK only marks an open chat read while the app is in the foreground.
 
 ## Tests
 
@@ -99,7 +119,7 @@ TETHER_B_JID=bob@example.com TETHER_B_PASSWORD=... \
 ./gradlew test
 ```
 
-Add `TETHER_HOST` / `TETHER_PORT` when the domain has no SRV records, and `TETHER_ALLOW_SCRAM_SHA1=true` for servers that offer nothing newer. The test trusts a self-signed certificate the same way the app does. It covers the subscription handshake, presence, a message with its server ack and delivery receipt, history without duplicates, signing in again with saved keys, and log out.
+Add `TETHER_HOST` / `TETHER_PORT` when the domain has no SRV records, and `TETHER_ALLOW_SCRAM_SHA1=true` for servers that offer nothing newer. The test trusts a self-signed certificate the same way the app does. It covers the subscription handshake, presence, a message with its server ack, delivery receipt and read marker, history without duplicates, signing in again with saved keys, and log out.
 
 ## License
 
