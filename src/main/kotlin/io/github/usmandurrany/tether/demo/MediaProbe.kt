@@ -1,4 +1,4 @@
-package io.github.usmandurrany.tether.demo.ui
+package io.github.usmandurrany.tether.demo
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
