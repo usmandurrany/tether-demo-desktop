@@ -20,6 +20,7 @@ import io.github.usmandurrany.tether.debug.RemoteLogSink
 import io.github.usmandurrany.tether.debug.TetherDebug
 import io.github.usmandurrany.tether.debug.http
 import io.github.usmandurrany.tether.im.ChatFeatures
+import io.github.usmandurrany.tether.im.FileMessageStore
 import io.github.usmandurrany.tether.im.InstantMessaging
 import io.github.usmandurrany.tether.im.SubscriptionEvent
 import io.github.usmandurrany.tether.im.TetherChat
@@ -69,7 +70,8 @@ class DemoSession private constructor(
         scope.launch {
             im.presences.subscriptions.collect { event ->
                 if (event is SubscriptionEvent.Requested) event.status?.let { note -> _notes.update { it + (event.from to note) } }
-                debug.log(LogLevel.INFO, "app", "Subscription: $event")
+                val auto = event is SubscriptionEvent.Requested && chat.features.autoAcceptContacts
+                debug.log(LogLevel.INFO, "app", "Subscription: $event" + if (auto) " (accepted automatically)" else "")
             }
         }
         debug.trackConnection(client.state, scope)
@@ -106,6 +108,8 @@ class DemoSession private constructor(
     suspend fun logOut() {
         withTimeoutOrNull(6_000) { client.disconnect() }
         CredentialVault(store).clear(account)
+        // Signing out also forgets this account's chats on this computer.
+        runCatching { FileMessageStore(AppPaths.messagesFile(account.toString())).clear() }
         remoteLogs?.let { withTimeoutOrNull(3_000) { it.flush() } }
         shutdown()
     }
@@ -157,8 +161,12 @@ class DemoSession private constructor(
                 store = store,
                 logger = debug.trafficLogger(),
             )
-            // Every chat feature on: ticks, read markers, typing, contacts, presence, carbons, history.
-            val chat = TetherChat(client, ChatFeatures(), store = store)
+            // Every chat feature on: ticks, read markers, typing, contacts, presence, carbons, history,
+            // last seen and delete for everyone. Auto-accept is the SDK's one opt-in feature.
+            val features = ChatFeatures(autoAcceptContacts = settings.autoAcceptContacts)
+            // The SDK's file store keeps ticks, read state, deletions and photos across restarts.
+            val messages = if (settings.keepMessages) FileMessageStore(AppPaths.messagesFile(config.jid.toString())) else null
+            val chat = TetherChat(client, features, store = store, messageStore = messages)
             debug.log(LogLevel.INFO, "app", "Signing in as ${config.jid} via ${config.host ?: "DNS SRV"}")
             return DemoSession(settings, store, debug, logs, remote, chat, scope)
         }

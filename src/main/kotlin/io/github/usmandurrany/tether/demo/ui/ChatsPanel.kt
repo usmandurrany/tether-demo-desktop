@@ -2,9 +2,11 @@ package io.github.usmandurrany.tether.demo.ui
 
 import io.github.usmandurrany.tether.core.BareJid
 import io.github.usmandurrany.tether.core.ConnectionState
+import io.github.usmandurrany.tether.demo.Attachments
 import io.github.usmandurrany.tether.demo.DemoSession
 import io.github.usmandurrany.tether.im.ContactPresence
 import io.github.usmandurrany.tether.im.Message
+import io.github.usmandurrany.tether.im.MessageData
 import io.github.usmandurrany.tether.im.MessageStatus
 import io.github.usmandurrany.tether.im.RosterItem
 import io.github.usmandurrany.tether.im.Subscription
@@ -38,8 +40,20 @@ import javax.swing.ListCellRenderer
 import javax.swing.ListSelectionModel
 import javax.swing.SwingUtilities
 import javax.swing.UIManager
+import javax.swing.JTextArea
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
+import javax.swing.event.HyperlinkEvent
+import javax.swing.text.Document
+import javax.swing.text.html.HTMLEditorKit
+import java.awt.Desktop
+import java.awt.Image
+import java.awt.Toolkit
+import java.net.URI
+import java.net.URL
+import java.net.URLDecoder
+import java.net.URLEncoder
+import java.util.Hashtable
 
 /** One row of the contact list: a roster entry, or someone we only have a conversation with. */
 data class ContactRow(
@@ -61,7 +75,12 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
 
     private val chatTitle = JLabel("Pick a contact").apply { font = font.deriveFont(Font.BOLD, font.size2D + 2f) }
     private val chatSubtitle = muted(" ")
-    private val transcript = JEditorPane("text/html", "").apply {
+    /** Photos load once and stay cached, so redrawing the chat does not reload them. */
+    private val images = Hashtable<URL, Image>()
+    private val transcript = JEditorPane().apply {
+        editorKit = object : HTMLEditorKit() {
+            override fun createDefaultDocument(): Document = super.createDefaultDocument().apply { putProperty("imageCache", images) }
+        }
         isEditable = false
         background = UIManager.getColor("List.background")
     }
@@ -69,6 +88,7 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
     private val loadOlder = JButton("Load older messages").apply { isVisible = false }
     private val input = JTextField().apply { putClientProperty("JTextField.placeholderText", "Write a message") }
     private val send = JButton("Send")
+    private val attach = JButton("Attach")
 
     private val chat = session.chat
     private var peer: BareJid? = null
@@ -97,6 +117,8 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
         transcriptScroll.border = BorderFactory.createEmptyBorder()
         loadOlder.addActionListener { loadHistory() }
         send.addActionListener { sendCurrent() }
+        attach.addActionListener { attachMenu().let { it.show(attach, 0, -it.preferredSize.height) } }
+        transcript.addHyperlinkListener { if (it.eventType == HyperlinkEvent.EventType.ACTIVATED) clicked(it.description) }
         input.addActionListener { sendCurrent() }
         input.document.addDocumentListener(object : DocumentListener {
             override fun insertUpdate(e: DocumentEvent) = typed()
@@ -113,6 +135,7 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
             )
         }
         val composer = JPanel(BorderLayout(8, 0)).apply {
+            add(attach, BorderLayout.WEST)
             add(input, BorderLayout.CENTER)
             add(send, BorderLayout.EAST)
             border = BorderFactory.createEmptyBorder(8, 12, 10, 12)
@@ -142,6 +165,7 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
         }
         uiScope.launch { chat.allMessages.collect { all -> peer?.let { showConversation(all[it].orEmpty()) } } }
         uiScope.launch { chat.typingContacts.collect { refreshHeader() } }
+        uiScope.launch { chat.contacts.collect { refreshHeader() } } // last seen arrives here
         uiScope.launch { combine(chat.contactRequests, session.requestNotes) { r, n -> r to n }.collect { (r, n) -> showRequests(r, n) } }
         uiScope.launch { im.history.available.collect { refreshLoadOlder() } }
         uiScope.launch { session.client.state.collect { refreshHeader() } }
@@ -215,7 +239,7 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
             row.item == null -> "not in your contacts"
             row.item.subscription == Subscription.NONE || row.item.subscription == Subscription.FROM ->
                 if (row.item.pendingOut) "waiting for them to accept" else "you can't see their presence"
-            else -> "offline"
+            else -> chat.contacts.value.firstOrNull { it.jid == jid }?.lastSeen?.let { "last seen ${lastSeenText(it)}" } ?: "offline"
         }
         refreshLoadOlder()
     }
@@ -259,12 +283,31 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
                 MessageStatus.FAILED -> "<font color='#d03b3b'>not delivered (${htmlEscape(m.error ?: "error")})</font>"
                 MessageStatus.UNREAD -> ""
             }
-            val meta = listOfNotNull(time, ticks.takeIf { m.outgoing && it.isNotEmpty() }, "from another device".takeIf { m.fromOtherDevice }).joinToString(" · ")
+            // Delete links: for everyone on our own messages, for me on any.
+            val key = URLEncoder.encode(m.id, "UTF-8")
+            val dir = if (m.outgoing) "out" else "in"
+            val actions = if (m.deleted) {
+                "<a href='tether:me/$dir/$key'>remove</a>"
+            } else {
+                listOfNotNull(
+                    "<a href='tether:everyone/$key'>delete for everyone</a>".takeIf { m.outgoing && m.status != MessageStatus.FAILED },
+                    "<a href='tether:me/$dir/$key'>delete for me</a>",
+                ).joinToString(" ")
+            }
+            val meta = listOfNotNull(time, ticks.takeIf { m.outgoing && it.isNotEmpty() }, "from another device".takeIf { m.fromOtherDevice }, actions).joinToString(" · ")
             val align = if (m.outgoing) "right" else "left"
+            val content = if (m.deleted) {
+                "<i style='color:$mutedColor'>This message was deleted</i>"
+            } else {
+                val parts = Attachments.of(m).map { renderContent(it, mutedColor) }
+                // A caption that only repeats the link (sent by an app without one) is not shown twice.
+                val caption = m.body.takeIf { it.isNotBlank() && Attachments.of(m).none { c -> m.body == fallbackOf(c) } }
+                (parts + listOfNotNull(caption?.let { "<span style='color:$text'>${htmlEscape(it)}</span>" })).joinToString("<br>")
+            }
             body.append(
                 "<table width='100%' cellspacing='0' cellpadding='2'><tr><td align='$align'>" +
                     "<table cellspacing='0' cellpadding='7' bgcolor='${if (m.outgoing) bubbleOut else bubbleIn}'><tr><td>" +
-                    "<span style='color:$text'>${htmlEscape(m.body)}</span><br>" +
+                    "$content<br>" +
                     "<span style='color:$mutedColor; font-size:${(base.size * 0.8).toInt()}pt'>$meta</span>" +
                     "</td></tr></table></td></tr></table>",
             )
@@ -299,6 +342,7 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
     private fun setComposerEnabled(enabled: Boolean) {
         input.isEnabled = enabled
         send.isEnabled = enabled
+        attach.isEnabled = enabled
     }
 
     private fun maybeMenu(e: MouseEvent) {
@@ -396,6 +440,166 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
             badge.font = list.font.deriveFont(Font.BOLD)
             isOpaque = true
             return this
+        }
+    }
+
+    // --- Custom data: photos, videos, locations and anything else ------------------------
+
+    private fun fallbackOf(content: Attachments.Content): String? = when (content) {
+        is Attachments.Photo -> content.url
+        is Attachments.Video -> content.url
+        is Attachments.Location -> Attachments.fallbackText(Attachments.location(content.latitude, content.longitude, null))
+        is Attachments.Other -> null
+    }
+
+    private fun renderContent(content: Attachments.Content, mutedColor: String): String = when (content) {
+        is Attachments.Photo -> {
+            val url = runCatching { URI(content.url).toURL() }.getOrNull()?.takeIf { it.protocol == "https" || it.protocol == "http" }
+            if (url == null) {
+                "[photo with an unusable link]"
+            } else {
+                images.computeIfAbsent(url) { Toolkit.getDefaultToolkit().createImage(it) }
+                // The sender's size lets the bubble take its shape before the photo loads.
+                val w = content.width
+                val h = content.height
+                val size = if (w != null && h != null && w > 0 && h > 0) {
+                    val scale = minOf(1.0, 260.0 / w, 260.0 / h)
+                    " width='${(w * scale).toInt()}' height='${(h * scale).toInt()}'"
+                } else {
+                    ""
+                }
+                val info = listOfNotNull("Photo", if (w != null && h != null) "$w×$h" else null, Attachments.size(content.bytes)).joinToString(" · ")
+                "<a href='${htmlEscape(content.url)}'><img src='${htmlEscape(content.url)}'$size border='0'></a><br>" +
+                    "<span style='color:$mutedColor'>$info</span>"
+            }
+        }
+        is Attachments.Video -> {
+            val info = listOfNotNull(Attachments.duration(content.seconds), Attachments.size(content.bytes)).joinToString(" · ")
+            "<a href='${htmlEscape(content.url)}'>▶ Play video</a>" + if (info.isNotEmpty()) " <span style='color:$mutedColor'>$info</span>" else ""
+        }
+        is Attachments.Location ->
+            "<a href='${htmlEscape(content.mapUrl)}'>Location: ${htmlEscape(content.label ?: "open the map")}</a><br>" +
+                "<span style='color:$mutedColor'>${"%.5f".format(content.latitude)}, ${"%.5f".format(content.longitude)}</span>"
+        is Attachments.Other ->
+            "<span style='color:$mutedColor'>Custom data <b>${htmlEscape(content.data.type)}</b>:</span><br>" +
+                content.data.fields.entries.joinToString("<br>") { (k, v) -> "<tt>${htmlEscape(k)}</tt> = ${htmlEscape(v)}" }
+    }
+
+    private fun clicked(href: String?) {
+        href ?: return
+        if (href.startsWith("tether:")) {
+            val parts = href.removePrefix("tether:").split("/")
+            val messages = peer?.let { chat.allMessages.value[it] }.orEmpty()
+            fun id(s: String) = URLDecoder.decode(s, "UTF-8")
+            when (parts.firstOrNull()) {
+                "everyone" -> messages.firstOrNull { it.outgoing && it.id == id(parts[1]) }?.let { m ->
+                    val ok = JOptionPane.showConfirmDialog(this, "Delete this message for everyone?", "Delete", JOptionPane.OK_CANCEL_OPTION)
+                    if (ok == JOptionPane.OK_OPTION && !chat.deleteForEveryone(m)) {
+                        JOptionPane.showMessageDialog(this, "This message can't be deleted for everyone.")
+                    }
+                }
+                "me" -> messages.firstOrNull { it.outgoing == (parts[1] == "out") && it.id == id(parts[2]) }?.let(chat::deleteForMe)
+            }
+            return
+        }
+        runCatching { Desktop.getDesktop().browse(URI(href)) }
+            .onFailure { JOptionPane.showMessageDialog(this, "Couldn't open $href", "Open link", JOptionPane.WARNING_MESSAGE) }
+    }
+
+    private fun attachMenu(): JPopupMenu = JPopupMenu().apply {
+        add(JMenuItem("Photo…").apply { addActionListener { photoDialog() } })
+        add(JMenuItem("Video…").apply { addActionListener { videoDialog() } })
+        add(JMenuItem("Location…").apply { addActionListener { locationDialog() } })
+        addSeparator()
+        add(JMenuItem("Custom data…").apply { addActionListener { customDialog() } })
+    }
+
+    /** Sends [data] with the caption as the body, or a link other XMPP apps can open when there is none. */
+    private fun sendData(caption: String, data: MessageData) {
+        val jid = peer ?: return
+        runCatching { chat.send(jid, caption.ifBlank { Attachments.fallbackText(data) }, data) }
+            .onFailure { JOptionPane.showMessageDialog(this, it.message, "Can't send", JOptionPane.WARNING_MESSAGE) }
+    }
+
+    private fun photoDialog() {
+        val url = JTextField("https://picsum.photos/id/1015/800/533.jpg", 28)
+        val caption = JTextField(28).apply { putClientProperty("JTextField.placeholderText", "Optional") }
+        val form = Form().apply {
+            field("Photo link", url, "A photo already online. The demo reads its size and dimensions to send with it.")
+            field("Caption", caption)
+        }
+        if (JOptionPane.showConfirmDialog(this, form, "Send a photo", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return
+        val link = url.text.trim()
+        if (!link.startsWith("https://") && !link.startsWith("http://")) return
+        val text = caption.text.trim()
+        uiScope.launch {
+            val info = MediaProbe.photo(link)
+            sendData(text, Attachments.photo(link, info?.width, info?.height, info?.bytes, info?.mime))
+        }
+    }
+
+    private fun videoDialog() {
+        val url = JTextField("https://download.samplelib.com/mp4/sample-5s.mp4", 28)
+        val seconds = JTextField("5", 6)
+        val caption = JTextField(28).apply { putClientProperty("JTextField.placeholderText", "Optional") }
+        val form = Form().apply {
+            field("Video link", url)
+            field("Length (seconds)", seconds)
+            field("Caption", caption)
+        }
+        if (JOptionPane.showConfirmDialog(this, form, "Send a video", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return
+        val link = url.text.trim()
+        if (!link.startsWith("https://") && !link.startsWith("http://")) return
+        val text = caption.text.trim()
+        uiScope.launch { sendData(text, Attachments.video(link, seconds.text.trim().toIntOrNull(), MediaProbe.size(link))) }
+    }
+
+    private fun locationDialog() {
+        val lat = JTextField("51.50135", 12)
+        val lon = JTextField("-0.14189", 12)
+        val label = JTextField("Buckingham Palace", 24)
+        val form = Form().apply {
+            field("Latitude", lat)
+            field("Longitude", lon)
+            field("Place name", label)
+        }
+        if (JOptionPane.showConfirmDialog(this, form, "Share a location", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return
+        val la = lat.text.trim().toDoubleOrNull()
+        val lo = lon.text.trim().toDoubleOrNull()
+        if (la == null || lo == null || la !in -90.0..90.0 || lo !in -180.0..180.0) {
+            JOptionPane.showMessageDialog(this, "Enter a latitude (-90 to 90) and longitude (-180 to 180).", "Share a location", JOptionPane.WARNING_MESSAGE)
+            return
+        }
+        sendData("", Attachments.location(la, lo, label.text.trim().ifEmpty { null }))
+    }
+
+    /** Any type and fields: the receiver shows them as they arrive, whatever they are. */
+    private fun customDialog() {
+        val type = JTextField("contact-card", 20)
+        val fields = JTextArea("name=Ada Lovelace\nphone=+44 20 7946 0000", 5, 28)
+        val caption = JTextField(28).apply { putClientProperty("JTextField.placeholderText", "Optional") }
+        val form = Form().apply {
+            field("Type", type, "Letters, digits, - _ and . only.")
+            field("Fields", JScrollPane(fields), "One key=value per line.")
+            field("Text", caption)
+        }
+        if (JOptionPane.showConfirmDialog(this, form, "Send custom data", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return
+        val pairs = fields.text.lines().mapNotNull { line ->
+            val i = line.indexOf('=')
+            if (i <= 0) null else line.substring(0, i).trim() to line.substring(i + 1).trim()
+        }
+        runCatching { MessageData(type.text.trim(), pairs.toMap()) }
+            .onSuccess { sendData(caption.text.trim(), it) }
+            .onFailure { JOptionPane.showMessageDialog(this, it.message, "Send custom data", JOptionPane.WARNING_MESSAGE) }
+    }
+
+    private fun lastSeenText(at: Long): String {
+        val ago = (System.currentTimeMillis() - at).coerceAtLeast(0) / 60_000
+        return when {
+            ago < 1 -> "just now"
+            ago < 60 -> "$ago min ago"
+            ago < 20 * 60 -> "at " + SimpleDateFormat("HH:mm").format(Date(at))
+            else -> SimpleDateFormat("d MMM, HH:mm").format(Date(at))
         }
     }
 }
