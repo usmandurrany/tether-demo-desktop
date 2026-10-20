@@ -6,7 +6,7 @@ A small chat app for Linux, Windows and macOS that shows how to use the [Tether 
 | --- | --- | --- |
 | Connection settings | Address, password, optional host/port, direct TLS, trusting a self-signed certificate, PLAIN and SCRAM-SHA-1 opt-ins, "remember me" | `XmppConfig`, `TlsConfig`, `SaslConfig`, `TetherJvm.client`, `CredentialVault`, `FileKeyValueStore` |
 | Status bar | Live connection state, reconnecting, presence and status message, disconnect, log out | `XmppClient.state`, `Presences.set` / `hide` |
-| Chats | Contacts with presence and last seen, unread counts, add/rename/remove, subscription requests (or auto-accept), messages with sent, delivered and read ticks, typing, history, delete for everyone and for me | `TetherChat`, `ChatFeatures` |
+| Chats | Contacts with presence and last seen, unread counts, add/rename/remove, subscription requests (or auto-accept), messages with sent, delivered and read ticks, typing, history, delete for everyone and for me, contacts' names and pictures from their profiles | `TetherChat`, `ChatFeatures` |
 | Attach | Photos, videos, locations and any custom type, sent as their own tags next to the caption and drawn on the other side | `MessageData`, `chat.send(to, text, data)`, `message.data("photo")` |
 | Server | What the server offers on this session (Stream Management, carbons, archive, CSI, disco features), push registration | `XmppSession.capabilities`, `Carbons`, `Push` |
 | Debug log | Every stanza sent and received, credentials always redacted, optional upload to a [tether-debug](https://github.com/usmandurrany/tether-debug) log portal | `TetherDebug`, `MemorySink`, `ConsoleSink`, `RemoteLogSink` |
@@ -59,6 +59,7 @@ The demo has no file hosting, so it sends links to photos and videos that are al
 ## Chat settings
 
 - **Accept contact requests automatically** turns on `ChatFeatures(autoAcceptContacts = true)`. It is off by default, as in the SDK.
+- **Profiles and pictures** turns `ChatFeatures.profiles` (vCard) on or off. It is on by default, as in the SDK. **Profile…** next to your address edits your name, email, phone, "about" line and picture; a picked image is cropped square and made a 192×192 JPEG so it fits in one stanza.
 - **Keep chats on this computer** uses the SDK's `FileMessageStore` (one file per account in `messages/`), so ticks, read state, deletions and photos survive a restart. **Log out** deletes the file.
 
 ## Where files go

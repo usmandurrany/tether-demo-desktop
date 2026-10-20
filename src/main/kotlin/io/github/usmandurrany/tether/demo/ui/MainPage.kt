@@ -37,16 +37,22 @@ class MainPage(
     private val stateLabel = JLabel().apply { icon = stateDot; iconTextGap = 8 }
     private val mode = JComboBox(Mode.entries.toTypedArray())
     private val statusText = JTextField(16).apply { putClientProperty("JTextField.placeholderText", "Status message") }
+    private val ownAvatar = AvatarIcon(26)
+    private val profile = JButton("Profile…").apply { toolTipText = "Your name and picture, as contacts see them" }
     private val reconnect = JButton("Reconnect").apply { isVisible = false; addActionListener { onReconnect() } }
 
     init {
-        val account = JLabel(session.account.toString()).apply { font = font.deriveFont(Font.BOLD) }
+        val account = JLabel(session.account.toString(), ownAvatar, JLabel.LEADING).apply { font = font.deriveFont(Font.BOLD); iconTextGap = 8 }
+        ownAvatar.name = session.account.local.orEmpty()
+        profile.isVisible = session.chat.features.profiles
+        profile.addActionListener { ProfileDialog(this, session, uiScope).isVisible = true }
         mode.addActionListener { applyPresence() }
         statusText.addActionListener { applyPresence() }
 
         val left = JPanel(FlowLayout(FlowLayout.LEFT, 10, 0)).apply {
             isOpaque = false
             add(account)
+            add(profile)
             add(mode)
             add(statusText)
         }
@@ -88,6 +94,14 @@ class MainPage(
                 stateDot.color = color
                 stateLabel.repaint()
                 reconnect.isVisible = state is ConnectionState.Terminal
+                profile.isEnabled = state is ConnectionState.Online
+            }
+        }
+        uiScope.launch {
+            session.chat.myProfile.collect { mine ->
+                ownAvatar.avatar = mine?.avatar
+                ownAvatar.name = mine?.displayName ?: session.account.local.orEmpty()
+                account.repaint()
             }
         }
     }

@@ -36,6 +36,7 @@ class SettingsPage(private val onConnect: (ConnectionSettings, String) -> Unit) 
 
     private val autoAccept = JCheckBox("Accept contact requests automatically")
     private val keepMessages = JCheckBox("Keep chats on this computer")
+    private val profiles = JCheckBox("Profiles and pictures")
 
     private val console = JCheckBox("Print stanzas to the terminal")
     private val redact = JCheckBox("Hide message bodies in logs")
@@ -68,6 +69,7 @@ class SettingsPage(private val onConnect: (ConnectionSettings, String) -> Unit) 
         form.section("Chats")
         form.wide(autoAccept, "Anyone who adds you sees when you're online, and is added back. Off by default.")
         form.wide(keepMessages, "Ticks, read state, deletions and photos survive a restart. Off keeps them in memory only.")
+        form.wide(profiles, "Your name and picture for contacts, and theirs in your lists (vCard). On by default.")
 
         form.section("Debug logging")
         form.wide(console)
@@ -128,6 +130,7 @@ class SettingsPage(private val onConnect: (ConnectionSettings, String) -> Unit) 
         allowSha1.isSelected = settings.allowScramSha1
         autoAccept.isSelected = settings.autoAcceptContacts
         keepMessages.isSelected = settings.keepMessages
+        profiles.isSelected = settings.profiles
         console.isSelected = settings.logToConsole
         redact.isSelected = settings.redactBodies
         portalUrl.text = settings.portalUrl
@@ -147,6 +150,7 @@ class SettingsPage(private val onConnect: (ConnectionSettings, String) -> Unit) 
         allowScramSha1 = allowSha1.isSelected,
         autoAcceptContacts = autoAccept.isSelected,
         keepMessages = keepMessages.isSelected,
+        profiles = profiles.isSelected,
         logToConsole = console.isSelected,
         redactBodies = redact.isSelected,
         portalUrl = portalUrl.text.trim(),

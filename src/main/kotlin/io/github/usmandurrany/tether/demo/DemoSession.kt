@@ -162,8 +162,8 @@ class DemoSession private constructor(
                 logger = debug.trafficLogger(),
             )
             // Every chat feature on: ticks, read markers, typing, contacts, presence, carbons, history,
-            // last seen and delete for everyone. Auto-accept is the SDK's one opt-in feature.
-            val features = ChatFeatures(autoAcceptContacts = settings.autoAcceptContacts)
+            // last seen, delete for everyone and profiles. Auto-accept is the SDK's one opt-in feature.
+            val features = ChatFeatures(autoAcceptContacts = settings.autoAcceptContacts, profiles = settings.profiles)
             // The SDK's file store keeps ticks, read state, deletions and photos across restarts.
             val messages = if (settings.keepMessages) FileMessageStore(AppPaths.messagesFile(config.jid.toString())) else null
             val chat = TetherChat(client, features, store = store, messageStore = messages)

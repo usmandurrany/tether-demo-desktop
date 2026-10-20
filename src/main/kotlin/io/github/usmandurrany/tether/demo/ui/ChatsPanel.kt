@@ -8,6 +8,7 @@ import io.github.usmandurrany.tether.im.ContactPresence
 import io.github.usmandurrany.tether.im.Message
 import io.github.usmandurrany.tether.im.MessageData
 import io.github.usmandurrany.tether.im.MessageStatus
+import io.github.usmandurrany.tether.im.Profile
 import io.github.usmandurrany.tether.im.RosterItem
 import io.github.usmandurrany.tether.im.Subscription
 import kotlinx.coroutines.CoroutineScope
@@ -61,8 +62,10 @@ data class ContactRow(
     val item: RosterItem?,
     val presences: List<ContactPresence>,
     val unread: Int,
+    /** Their vCard, once fetched: a name to fall back on, and a picture. */
+    val profile: Profile? = null,
 ) {
-    val label: String get() = item?.name?.takeIf { it.isNotBlank() } ?: jid.toString()
+    val label: String get() = item?.name?.takeIf { it.isNotBlank() } ?: profile?.displayName ?: jid.toString()
     val online: Boolean get() = presences.isNotEmpty()
     val best: ContactPresence? get() = presences.maxByOrNull { it.priority }
 }
@@ -73,6 +76,8 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
     private val contacts = JList(model)
     private val requests = JPanel().apply { layout = BoxLayout(this, BoxLayout.Y_AXIS) }
 
+    private val titleAvatar = AvatarIcon(36)
+    private val titleAvatarLabel = JLabel(titleAvatar).apply { border = BorderFactory.createEmptyBorder(0, 0, 0, 10); isVisible = false }
     private val chatTitle = JLabel("Pick a contact").apply { font = font.deriveFont(Font.BOLD, font.size2D + 2f) }
     private val chatSubtitle = muted(" ")
     /** Photos load once and stay cached, so redrawing the chat does not reload them. */
@@ -127,6 +132,7 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
         })
 
         val header = JPanel(BorderLayout()).apply {
+            add(titleAvatarLabel, BorderLayout.WEST)
             add(JPanel(GridLayout(2, 1)).apply { isOpaque = false; add(chatTitle); add(chatSubtitle) }, BorderLayout.CENTER)
             add(loadOlder, BorderLayout.EAST)
             border = BorderFactory.createCompoundBorder(
@@ -156,10 +162,10 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
     private fun bind() {
         val im = session.im
         uiScope.launch {
-            combine(im.roster.items, im.presences.contacts, chat.conversations) { roster, presences, convs ->
+            combine(im.roster.items, im.presences.contacts, chat.conversations, chat.profiles) { roster, presences, convs, profiles ->
                 val unread = convs.associate { it.peer to it.unreadCount }
                 val jids = (roster.keys + unread.keys).filter { it != session.account }
-                jids.map { ContactRow(it, roster[it], presences[it].orEmpty(), unread[it] ?: 0) }
+                jids.map { ContactRow(it, roster[it], presences[it].orEmpty(), unread[it] ?: 0, profiles[it]) }
                     .sortedWith(compareBy<ContactRow> { !it.online }.thenBy { it.label.lowercase() })
             }.collect(::showContacts)
         }
@@ -232,6 +238,10 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
         val jid = peer ?: return
         val row = (0 until model.size()).map(model::get).firstOrNull { it.jid == jid }
         chatTitle.text = row?.label ?: jid.toString()
+        titleAvatar.avatar = row?.profile?.avatar
+        titleAvatar.name = chatTitle.text
+        titleAvatarLabel.isVisible = true
+        titleAvatarLabel.repaint()
         chatSubtitle.text = when {
             jid in chat.typingContacts.value -> "typing…"
             row == null -> jid.toString()
@@ -408,19 +418,23 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
     }
 
     private class ContactRenderer : JPanel(BorderLayout(8, 0)), ListCellRenderer<ContactRow> {
-        private val dot = Dot(Palette.offline)
-        private val title = JLabel().apply { icon = dot; iconTextGap = 8 }
+        private val avatar = AvatarIcon(34)
+        private val picture = JLabel(avatar)
+        private val title = JLabel()
         private val detail = JLabel()
         private val badge = JLabel()
 
         init {
             border = BorderFactory.createEmptyBorder(6, 10, 6, 10)
+            add(picture, BorderLayout.WEST)
             add(JPanel(GridLayout(2, 1)).apply { isOpaque = false; add(title); add(detail) }, BorderLayout.CENTER)
             add(badge, BorderLayout.EAST)
         }
 
         override fun getListCellRendererComponent(list: JList<out ContactRow>, row: ContactRow, index: Int, selected: Boolean, focused: Boolean): Component {
-            dot.color = presenceColor(row.best?.show, row.online)
+            avatar.avatar = row.profile?.avatar
+            avatar.name = row.label
+            avatar.dot = presenceColor(row.best?.show, row.online)
             title.text = row.label
             title.font = list.font.deriveFont(if (row.unread > 0) Font.BOLD else Font.PLAIN)
             detail.text = when {

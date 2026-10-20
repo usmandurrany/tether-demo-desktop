@@ -2,7 +2,9 @@ package io.github.usmandurrany.tether.demo
 
 import io.github.usmandurrany.tether.core.BareJid
 import io.github.usmandurrany.tether.core.ConnectResult
+import io.github.usmandurrany.tether.im.Avatar
 import io.github.usmandurrany.tether.im.MessageStatus
+import io.github.usmandurrany.tether.im.Profile
 import io.github.usmandurrany.tether.im.data
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -118,6 +120,14 @@ class LiveServerTest {
                 b.chat.deleteForMe(b.chat.messages(aBare).value.first { it.body == text })
                 assertTrue(b.chat.messages(aBare).value.none { it.body == text })
                 assertTrue(a.chat.messages(bJid).value.any { it.body == text })
+
+                // Profiles: B publishes a name and picture; A's contact list shows the picture
+                // (advertised in B's presence), and the profile has the rest.
+                val picture = Avatar("image/png", ByteArray(2_000) { it.toByte() })
+                b.chat.updateMyProfile(Profile(fullName = "Bob Builder", nickname = "Bobby", avatar = picture))
+                assertEquals("Bobby", b.chat.myProfile.value?.nickname)
+                withTimeout(10_000) { a.chat.contacts.first { list -> list.firstOrNull { it.jid == bJid }?.avatar == picture } }
+                assertEquals("Bob Builder", a.chat.profile(bJid)?.fullName)
 
                 // Last seen: A sees when B went offline.
                 b.disconnect()
