@@ -4,12 +4,12 @@ import io.github.usmandurrany.tether.core.BareJid
 import io.github.usmandurrany.tether.core.ConnectionState
 import io.github.usmandurrany.tether.demo.Attachments
 import io.github.usmandurrany.tether.demo.DemoSession
-import io.github.usmandurrany.tether.im.ContactPresence
+import io.github.usmandurrany.tether.im.Avatar
+import io.github.usmandurrany.tether.im.Contact
+import io.github.usmandurrany.tether.im.Conversation
 import io.github.usmandurrany.tether.im.Message
 import io.github.usmandurrany.tether.im.MessageData
 import io.github.usmandurrany.tether.im.MessageStatus
-import io.github.usmandurrany.tether.im.Profile
-import io.github.usmandurrany.tether.im.RosterItem
 import io.github.usmandurrany.tether.im.Subscription
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.combine
@@ -56,18 +56,17 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 import java.util.Hashtable
 
-/** One row of the contact list: a roster entry, or someone we only have a conversation with. */
-data class ContactRow(
-    val jid: BareJid,
-    val item: RosterItem?,
-    val presences: List<ContactPresence>,
-    val unread: Int,
-    /** Their vCard, once fetched: a name to fall back on, and a picture. */
-    val profile: Profile? = null,
-) {
-    val label: String get() = item?.name?.takeIf { it.isNotBlank() } ?: profile?.displayName ?: jid.toString()
-    val online: Boolean get() = presences.isNotEmpty()
-    val best: ContactPresence? get() = presences.maxByOrNull { it.priority }
+/**
+ * One row of the contact list: a contact, someone we only have a conversation
+ * with, or both. The SDK's [Contact] and [Conversation] already carry the name
+ * (from the roster or their profile), picture, presence and last seen.
+ */
+data class ContactRow(val jid: BareJid, val contact: Contact?, val conversation: Conversation?) {
+    val label: String get() = contact?.name ?: conversation?.name ?: jid.toString()
+    val online: Boolean get() = contact?.online ?: conversation?.online ?: false
+    val avatar: Avatar? get() = contact?.avatar ?: conversation?.avatar
+    val unread: Int get() = conversation?.unreadCount ?: 0
+    val lastSeen: Long? get() = contact?.lastSeen ?: conversation?.lastSeen
 }
 
 /** Contacts on the left, the open conversation on the right. */
@@ -162,16 +161,16 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
     private fun bind() {
         val im = session.im
         uiScope.launch {
-            combine(im.roster.items, im.presences.contacts, chat.conversations, chat.profiles) { roster, presences, convs, profiles ->
-                val unread = convs.associate { it.peer to it.unreadCount }
-                val jids = (roster.keys + unread.keys).filter { it != session.account }
-                jids.map { ContactRow(it, roster[it], presences[it].orEmpty(), unread[it] ?: 0, profiles[it]) }
+            combine(chat.contacts, chat.conversations) { contacts, conversations ->
+                val byJid = contacts.associateBy { it.jid }
+                val chats = conversations.associateBy { it.peer }
+                (byJid.keys + chats.keys).filter { it != session.account }
+                    .map { ContactRow(it, byJid[it], chats[it]) }
                     .sortedWith(compareBy<ContactRow> { !it.online }.thenBy { it.label.lowercase() })
             }.collect(::showContacts)
         }
         uiScope.launch { chat.allMessages.collect { all -> peer?.let { showConversation(all[it].orEmpty()) } } }
         uiScope.launch { chat.typingContacts.collect { refreshHeader() } }
-        uiScope.launch { chat.contacts.collect { refreshHeader() } } // last seen arrives here
         uiScope.launch { combine(chat.contactRequests, session.requestNotes) { r, n -> r to n }.collect { (r, n) -> showRequests(r, n) } }
         uiScope.launch { im.history.available.collect { refreshLoadOlder() } }
         uiScope.launch { session.client.state.collect { refreshHeader() } }
@@ -238,18 +237,18 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
         val jid = peer ?: return
         val row = (0 until model.size()).map(model::get).firstOrNull { it.jid == jid }
         chatTitle.text = row?.label ?: jid.toString()
-        titleAvatar.avatar = row?.profile?.avatar
+        titleAvatar.avatar = row?.avatar
         titleAvatar.name = chatTitle.text
         titleAvatarLabel.isVisible = true
         titleAvatarLabel.repaint()
         chatSubtitle.text = when {
             jid in chat.typingContacts.value -> "typing…"
             row == null -> jid.toString()
-            row.online -> listOfNotNull(row.best?.show?.wire ?: "online", row.best?.status).joinToString(" · ")
-            row.item == null -> "not in your contacts"
-            row.item.subscription == Subscription.NONE || row.item.subscription == Subscription.FROM ->
-                if (row.item.pendingOut) "waiting for them to accept" else "you can't see their presence"
-            else -> chat.contacts.value.firstOrNull { it.jid == jid }?.lastSeen?.let { "last seen ${lastSeenText(it)}" } ?: "offline"
+            row.online -> listOfNotNull(row.contact?.show?.wire ?: "online", row.contact?.status).joinToString(" · ")
+            row.contact == null -> "not in your contacts"
+            row.contact.subscription == Subscription.NONE || row.contact.subscription == Subscription.FROM ->
+                if (row.contact.pending) "waiting for them to accept" else "you can't see their presence"
+            else -> row.lastSeen?.let { "last seen ${lastSeenText(it)}" } ?: "offline"
         }
         refreshLoadOlder()
     }
@@ -360,13 +359,14 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
         val index = contacts.locationToIndex(e.point).takeIf { it >= 0 && contacts.getCellBounds(it, it).contains(e.point) } ?: return
         contacts.selectedIndex = index
         val row = model[index]
-        val roster = session.im.roster
+        // Finer subscription control than TetherChat's approve and deny, from the protocol-level API.
         val presences = session.im.presences
         JPopupMenu().apply {
-            add(JMenuItem(if (row.item == null) "Add to contacts…" else "Rename…").apply {
+            add(JMenuItem(if (row.contact == null) "Add to contacts…" else "Rename…").apply {
                 addActionListener {
-                    val name = JOptionPane.showInputDialog(this@ChatsPanel, "Name for ${row.jid}", row.item?.name.orEmpty()) ?: return@addActionListener
-                    uiScope.launch { runCatching { roster.set(row.jid, name.trim().ifEmpty { null }, row.item?.groups.orEmpty()) }.onFailure { error(it) } }
+                    val name = JOptionPane.showInputDialog(this@ChatsPanel, "Name for ${row.jid}", row.contact?.name.orEmpty()) ?: return@addActionListener
+                    // Renaming keeps their groups.
+                    uiScope.launch { runCatching { chat.addContact(row.jid, name.trim().ifEmpty { null }) }.onFailure { error(it) } }
                 }
             })
             add(JMenuItem("Ask to see their presence").apply {
@@ -378,12 +378,12 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
             add(JMenuItem("Stop sharing my presence").apply {
                 addActionListener { uiScope.launch { runCatching { presences.deny(row.jid) }.onFailure { error(it) } } }
             })
-            if (row.item != null) {
+            if (row.contact != null) {
                 addSeparator()
                 add(JMenuItem("Remove contact").apply {
                     addActionListener {
                         val ok = JOptionPane.showConfirmDialog(this@ChatsPanel, "Remove ${row.label} from your contacts?", "Remove contact", JOptionPane.OK_CANCEL_OPTION)
-                        if (ok == JOptionPane.OK_OPTION) uiScope.launch { runCatching { roster.remove(row.jid) }.onFailure { error(it) } }
+                        if (ok == JOptionPane.OK_OPTION) uiScope.launch { runCatching { chat.removeContact(row.jid) }.onFailure { error(it) } }
                     }
                 })
             }
@@ -432,16 +432,16 @@ class ChatsPanel(private val session: DemoSession, private val uiScope: Coroutin
         }
 
         override fun getListCellRendererComponent(list: JList<out ContactRow>, row: ContactRow, index: Int, selected: Boolean, focused: Boolean): Component {
-            avatar.avatar = row.profile?.avatar
+            avatar.avatar = row.avatar
             avatar.name = row.label
-            avatar.dot = presenceColor(row.best?.show, row.online)
+            avatar.dot = presenceColor(row.contact?.show, row.online)
             title.text = row.label
             title.font = list.font.deriveFont(if (row.unread > 0) Font.BOLD else Font.PLAIN)
             detail.text = when {
-                row.online -> row.best?.status ?: row.best?.show?.wire ?: "online"
-                row.item == null -> "not in contacts"
-                row.item.pendingOut -> "request sent"
-                row.item.subscription == Subscription.NONE || row.item.subscription == Subscription.FROM -> "presence not shared"
+                row.online -> row.contact?.status ?: row.contact?.show?.wire ?: "online"
+                row.contact == null -> "not in contacts"
+                row.contact.pending -> "request sent"
+                row.contact.subscription == Subscription.NONE || row.contact.subscription == Subscription.FROM -> "presence not shared"
                 else -> "offline"
             }.let { if (row.label != row.jid.toString()) "${row.jid} · $it" else it }
             detail.font = list.font.deriveFont(list.font.size2D - 1f)

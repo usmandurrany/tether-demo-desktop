@@ -54,7 +54,7 @@ class LiveServerTest {
                         is ConnectResult.Connected -> return session
                         is ConnectResult.Failed -> {
                             session.disconnect()
-                            val pin = DemoSession.refusedCertificate(result.error) ?: throw result.error
+                            val pin = result.untrustedCertificate ?: throw result.error
                             s = s.copy(pinnedCertificate = pin)
                         }
                         ConnectResult.Cancelled -> error("cancelled")

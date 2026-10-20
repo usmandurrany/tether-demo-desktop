@@ -25,7 +25,6 @@ import io.github.usmandurrany.tether.im.InstantMessaging
 import io.github.usmandurrany.tether.im.SubscriptionEvent
 import io.github.usmandurrany.tether.im.TetherChat
 import io.github.usmandurrany.tether.sasl.ScramKeys
-import io.github.usmandurrany.tether.transport.TlsVerificationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -43,8 +42,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  * [chat] ([TetherChat]) does the chat work: message list and ticks, read
  * markers, typing, history, contacts. The screens read its flows and call
  * `send`, `typing`, `openChat` and `closeChat`. This class only adds what is
- * specific to the demo: debug logging, the "remember me" store and a network
- * monitor.
+ * specific to the demo: debug logging and its settings.
  */
 class DemoSession private constructor(
     val settings: ConnectionSettings,
@@ -75,7 +73,6 @@ class DemoSession private constructor(
             }
         }
         debug.trackConnection(client.state, scope)
-        NetworkMonitor(client).start(scope)
     }
 
     /** Accepting also asks to see their presence back, which is what most chat apps do. */
@@ -84,15 +81,8 @@ class DemoSession private constructor(
         _notes.update { it - from }
     }
 
-    suspend fun addContact(jid: BareJid, name: String?, group: String?) {
-        // TetherChat.addContact has no groups; the roster call underneath does.
-        if (group == null) {
-            chat.addContact(jid, name)
-        } else {
-            im.roster.set(jid, name = name, groups = setOf(group))
-            im.presences.request(jid)
-        }
-    }
+    suspend fun addContact(jid: BareJid, name: String?, group: String?) =
+        chat.addContact(jid, name, groups = group?.let(::setOf))
 
     /** First attempt; after it the client keeps reconnecting by itself until [disconnect]. */
     suspend fun connect(): ConnectResult = chat.connect()
@@ -149,9 +139,8 @@ class DemoSession private constructor(
             }
 
             val config = settings.toXmppConfig(password, savedKeys)
-            // Without "remember me", nothing that could log in again is written to disk.
-            val store: KeyValueStore = if (settings.rememberLogin) fileStore else WithoutCredentials(fileStore)
-            if (!settings.rememberLogin) scope.launch { CredentialVault(fileStore).clear(config.jid) }
+            val store: KeyValueStore = fileStore
+            // Follows the network by itself. Without "remember me", no login keys are written to disk.
             val client = TetherJvm.client(
                 config,
                 scope,
@@ -160,6 +149,7 @@ class DemoSession private constructor(
                 policy = ClientPolicy(reconnect = ReconnectPolicy(backgroundMode = BackgroundMode.STAY_CONNECTED)),
                 store = store,
                 logger = debug.trafficLogger(),
+                rememberLogin = settings.rememberLogin,
             )
             // Every chat feature on: ticks, read markers, typing, contacts, presence, carbons, history,
             // last seen, delete for everyone and profiles. Auto-accept is the SDK's one opt-in feature.
@@ -171,28 +161,7 @@ class DemoSession private constructor(
             return DemoSession(settings, store, debug, logs, remote, chat, scope)
         }
 
-        /** The SHA-256 of a certificate the client refused, found anywhere in the error's causes. */
-        fun refusedCertificate(error: Throwable): String? =
-            generateSequence(error) { it.cause }.filterIsInstance<TlsVerificationException>().firstOrNull()?.peerCertificateSha256
-
         const val APP_ID = "io.github.usmandurrany.tether.demo"
         const val APP_VERSION = "0.1.0"
-    }
-}
-
-/**
- * A store that drops the SCRAM login keys, for sign-ins without "remember me".
- * The prefix is the one [CredentialVault] uses for its keys.
- */
-private class WithoutCredentials(private val inner: KeyValueStore) : KeyValueStore {
-    override suspend fun get(key: String): String? = if (key.startsWith(CREDENTIAL_PREFIX)) null else inner.get(key)
-
-    override suspend fun put(key: String, value: String?) {
-        // Still clear old keys, so unticking "remember me" also forgets the last saved login.
-        if (key.startsWith(CREDENTIAL_PREFIX)) inner.put(key, null) else inner.put(key, value)
-    }
-
-    companion object {
-        const val CREDENTIAL_PREFIX = "tether.scram."
     }
 }

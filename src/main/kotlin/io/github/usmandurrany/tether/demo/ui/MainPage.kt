@@ -2,7 +2,6 @@ package io.github.usmandurrany.tether.demo.ui
 
 import io.github.usmandurrany.tether.core.ConnectionState
 import io.github.usmandurrany.tether.demo.DemoSession
-import io.github.usmandurrany.tether.im.OwnPresence
 import io.github.usmandurrany.tether.im.Show
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -110,13 +109,7 @@ class MainPage(
         val selected = mode.selectedItem as Mode
         val status = statusText.text.trim().ifEmpty { null }
         uiScope.launch {
-            runCatching {
-                if (selected == Mode.INVISIBLE) {
-                    session.im.presences.hide()
-                } else {
-                    session.im.presences.set(OwnPresence(show = selected.show, status = status))
-                }
-            }
+            runCatching { session.chat.setPresence(selected.show, status, invisible = selected == Mode.INVISIBLE) }
         }
     }
 }
