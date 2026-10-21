@@ -11,12 +11,18 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         mavenCentral()
+        // Compose for Desktop uses a few AndroidX libraries (collection, lifecycle, ...) that only Google publishes.
+        google {
+            content {
+                includeGroupByRegex("androidx\\..*")
+            }
+        }
     }
 }
 
 // The Tether SDK is not on Maven Central yet, so Gradle builds it from source.
 // The SDK's build adds an Android module when it finds an Android SDK; this app
-// only needs the JVM parts, so skip it (no Google Maven, faster first build).
+// only needs the JVM parts, so skip it (faster first build).
 System.setProperty("org.gradle.project.tether.android", "false")
 
 val localSdk = providers.gradleProperty("tether.sdkPath").orNull

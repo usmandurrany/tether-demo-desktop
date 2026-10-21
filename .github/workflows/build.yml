@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
@@ -31,3 +32,37 @@ jobs:
         with:
           name: tether-demo-desktop-jar
           path: build/libs/tether-demo-desktop-0.1.0-all.jar
+
+  # Draws every screen with sample data (ScreenshotTest): no server or display needed.
+  # Run the workflow by hand on a branch to commit the pictures to docs/screenshots.
+  screenshots:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      # Compose picks Noto Sans for its default sans-serif on Linux when it's installed.
+      - name: Install Noto Sans
+        run: sudo apt-get update -q && sudo apt-get install -y -q fonts-noto-core
+      - name: Render the screens
+        run: ./gradlew test --tests '*ScreenshotTest*'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: build/screenshots
+      - name: Commit them to docs/screenshots
+        if: github.event_name == 'workflow_dispatch' && github.ref_name != 'main'
+        run: |
+          mkdir -p docs/screenshots
+          cp build/screenshots/*.png docs/screenshots/
+          git add docs/screenshots
+          if git diff --cached --quiet; then exit 0; fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "Update screenshots"
+          git push origin HEAD:${{ github.ref_name }}

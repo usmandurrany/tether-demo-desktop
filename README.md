@@ -4,18 +4,43 @@ A small chat app for Linux, Windows and macOS that shows how to use the [Tether 
 
 | Screen | What it shows | SDK API |
 | --- | --- | --- |
-| Connection settings | Address, password, optional host/port, direct TLS, trusting a self-signed certificate, PLAIN and SCRAM-SHA-1 opt-ins, "remember me" | `XmppConfig`, `TlsConfig`, `SaslConfig`, `TetherJvm.client`, `CredentialVault`, `FileKeyValueStore` |
-| Status bar | Live connection state, reconnecting, presence and status message, disconnect, log out | `XmppClient.state`, `Presences.set` / `hide` |
+| Sign in | Address, password, optional host/port, direct TLS, trusting a self-signed certificate, PLAIN and SCRAM-SHA-1 opt-ins, "remember me" | `XmppConfig`, `TlsConfig`, `SaslConfig`, `TetherJvm.client`, `CredentialVault`, `FileKeyValueStore` |
+| Account menu and banner | Live connection state, reconnecting, presence and status message, your profile, disconnect, log out | `XmppClient.state`, `Presences.set` / `hide` |
 | Chats | Contacts with presence and last seen, unread counts, add/rename/remove, subscription requests (or auto-accept), messages with sent, delivered and read ticks, typing, history, delete for everyone and for me, contacts' names and pictures from their profiles | `TetherChat`, `ChatFeatures` |
 | Attach | Photos, videos, locations and any custom type, sent as their own tags next to the caption and drawn on the other side | `MessageData`, `chat.send(to, text, data)`, `message.data("photo")` |
 | Server | What the server offers on this session (Stream Management, carbons, archive, CSI, disco features), push registration | `XmppSession.capabilities`, `Carbons`, `Push` |
-| Debug log | Every stanza sent and received, credentials always redacted, optional upload to a [tether-debug](https://github.com/usmandurrany/tether-debug) log portal | `TetherDebug`, `MemorySink`, `ConsoleSink`, `RemoteLogSink` |
+| Log | Every stanza sent and received, credentials always redacted, optional upload to a [tether-debug](https://github.com/usmandurrany/tether-debug) log portal | `TetherDebug`, `MemorySink`, `ConsoleSink`, `RemoteLogSink` |
 
-The UI is plain Swing with the [FlatLaf](https://www.formdev.com/flatlaf/) look, so the app starts fast and needs no native libraries. Everything the SDK does lives in one file, [`DemoSession.kt`](src/main/kotlin/io/github/usmandurrany/tether/demo/DemoSession.kt); the `ui/` package only draws it.
+The UI is [Compose for Desktop](https://www.jetbrains.com/compose-multiplatform/) with Material 3, light and dark. It adapts to the window: two panes when there is room, the chat list or one chat when it is narrow. Everything the SDK does lives in one file, [`DemoSession.kt`](src/main/kotlin/io/github/usmandurrany/tether/demo/DemoSession.kt); the rest only shows it.
+
+![Chats in a wide window](docs/screenshots/chat-wide.png)
+
+| Narrow window | Dark theme | Sign in |
+| --- | --- | --- |
+| ![The chat list and one chat take turns in a narrow window](docs/screenshots/chat-narrow.png) | ![Dark theme](docs/screenshots/chat-wide-dark.png) | ![Sign in](docs/screenshots/sign-in-wide.png) |
+
+More in [docs/screenshots](docs/screenshots).
+
+### How the app is built
+
+The app follows the same pattern as an Android Compose app, so it doubles as a template for a Compose chat client:
+
+- **ViewModels with one state each.** `AppViewModel` signs in and out. Once signed in, `HomeViewModel`, `ChatsViewModel`, `ServerViewModel` and `LogViewModel` each `combine` the SDK's `StateFlow`s into one immutable `State` that the screen collects.
+- **Routes and stateless screens.** Each screen has a `…Route` that gets its ViewModel and collects its state, and a `…Screen` that only takes that state and actions (`ChatsScreen(state, actions)`). The screens never see the SDK or a ViewModel, so tests and previews can draw them with any state.
+- **One-way data flow.** Screens are functions of their state and report everything the person does through their actions. Problems that should show once (a failed delete, say) come through a `Channel` and appear in a snackbar.
+- **Scoped to the session.** Each signed-in session gets its own `ViewModelStore`, so signing out clears the chat state with it (`ViewModelScope` in [`Main.kt`](src/main/kotlin/io/github/usmandurrany/tether/demo/Main.kt)).
+- **No extra frameworks.** No DI container or navigation library: one session object is passed down, and the navigation rail switches between three screens.
+
+| Package | What's in it |
+| --- | --- |
+| `demo` | `DemoSession` (all SDK calls), settings, files, attachments |
+| `demo.app` | `AppViewModel`, the sign-in flow and the certificate prompt |
+| `demo.ui.signin`, `ui.home`, `ui.chats`, `ui.server`, `ui.log` | One screen and its ViewModel each |
+| `demo.ui.theme`, `ui.components` | Colours, type, icons and the shared building blocks |
 
 ## Run it
 
-You need JDK 17 or newer and an internet connection. Nothing else: Gradle comes with the wrapper, and the first build fetches the SDK from GitHub and compiles it (see below).
+You need JDK 17 or newer and an internet connection. Nothing else: Gradle comes with the wrapper, and the first build fetches the SDK from GitHub and compiles it (see below). Compose's libraries come from Maven Central and Google's Maven repository.
 
 ```sh
 git clone https://github.com/usmandurrany/tether-demo-desktop
@@ -23,14 +48,14 @@ cd tether-demo-desktop
 ./gradlew run            # Windows: gradlew.bat run
 ```
 
-To hand it to a tester, build a single jar and run it anywhere with Java 17+:
+To hand it to a tester, build a single jar and run it with Java 17+ on the same kind of OS you built it on (Compose bundles the graphics library for that OS):
 
 ```sh
 ./gradlew packageJar
 java -jar build/libs/tether-demo-desktop-0.1.0-all.jar
 ```
 
-`./gradlew installDist` gives a folder with start scripts for Linux/macOS and Windows in `build/install/tether-demo/bin`.
+`./gradlew packageDistributionForCurrentOS` builds an installer with its own Java runtime: a `.deb` on Linux, an `.msi` on Windows and a `.dmg` on macOS, in `build/compose/binaries`.
 
 ## Connect to a server
 
@@ -59,7 +84,7 @@ The demo has no file hosting, so it sends links to photos and videos that are al
 ## Chat settings
 
 - **Accept contact requests automatically** turns on `ChatFeatures(autoAcceptContacts = true)`. It is off by default, as in the SDK.
-- **Profiles and pictures** turns `ChatFeatures.profiles` (vCard) on or off. It is on by default, as in the SDK. **Profile…** next to your address edits your name, email, phone, "about" line and picture; a picked image is cropped square and made a 192×192 JPEG so it fits in one stanza.
+- **Profiles and pictures** turns `ChatFeatures.profiles` (vCard) on or off. It is on by default, as in the SDK. **Edit profile** in the account menu (your picture at the bottom of the left rail) edits your name, email, phone, "about" line and picture; a picked image is cropped square and made a 192×192 JPEG so it fits in one stanza.
 - **Keep chats on this computer** uses the SDK's `FileMessageStore` (one file per account in `messages/`), so ticks, read state, deletions and photos survive a restart. **Log out** deletes the file.
 
 ## Where files go
@@ -70,15 +95,15 @@ The demo has no file hosting, so it sends links to photos and videos that are al
 | Windows | `%APPDATA%\TetherDemo` |
 | macOS | `~/Library/Application Support/TetherDemo` |
 
-`settings.properties` holds the settings page (no password). `messages/` holds each account's chats when **Keep chats on this computer** is on. `tether-state.properties` is the SDK's own state: stream resumption, unsent messages, keepalive timing, the roster and, with Remember me, the login keys. It is readable by your user only, but not encrypted. Pass `-Dtether.demo.home=<folder>` to use another folder, for example to run two accounts side by side:
+`settings.properties` holds the sign-in page's settings (no password) and the theme. `messages/` holds each account's chats when **Keep chats on this computer** is on. `tether-state.properties` is the SDK's own state: stream resumption, unsent messages, keepalive timing, the roster and, with Remember me, the login keys. It is readable by your user only, but not encrypted. Pass `-Dtether.demo.home=<folder>` to use another folder, for example to run two accounts side by side:
 
 ```sh
-JAVA_OPTS="-Dtether.demo.home=/tmp/bob" ./gradlew run
+./gradlew run -Pdemo.home=/tmp/bob
 ```
 
 ## Debug logging
 
-The **Debug log** tab always shows the traffic. On the settings page you can also print it to the terminal, hide message bodies, and upload it to a tether-debug log portal (URL, ingest key and an optional label for the testing round). The portal groups uploads by an install id the app creates once.
+The **Log** screen always shows the traffic. Under **Advanced** on the sign-in page you can also print it to the terminal, hide message bodies, and upload it to a tether-debug log portal (URL, ingest key and an optional label for the testing round). The portal groups uploads by an install id the app creates once.
 
 ## How the SDK is included
 
@@ -104,14 +129,16 @@ The log portal that **Log portal URL** uploads to is a separate project, [usmand
 - **One `TetherChat` per account.** `DemoSession.create` builds the client with `TetherJvm.client` and wraps it in a `TetherChat` with every feature on. The chat screen only reads `chat.conversations`, `chat.allMessages` and `chat.typingContacts`, and calls `send`, `typing`, `openChat`, `closeChat` and `loadOlder`. Ticks, read markers, typing timers, history and de-duplication are the SDK's job.
 - **Desktop connection policy.** `BackgroundMode.STAY_CONNECTED`: the app stays connected when its window loses focus and only tells the server it is inactive (XEP-0352). Window focus drives `client.setForeground`.
 - **Network changes.** The JVM has no network event, so the SDK's `TetherJvm.client` checks the interfaces every few seconds by itself (`JvmNetworkMonitor`) and reconnects when the network changes. The app writes no code for it.
-- **First attempt versus reconnects.** `connect()` returns after the first attempt. The settings page stops on a failure and explains it; after a successful login, Tether reconnects on its own and the status bar shows it.
+- **First attempt versus reconnects.** `connect()` returns after the first attempt. The sign-in page stops on a failure and explains it; after a successful login, Tether reconnects on its own and a banner above the screen shows it.
 - **Trusting a self-signed certificate.** A failed `connect()` carries `untrustedCertificate`, the refused certificate's fingerprint; the app asks, then retries with it pinned.
 - **Not remembering a login.** `TetherJvm.client(rememberLogin = false)` saves no SCRAM keys and deletes old ones, while the SDK still saves its other state.
 - **Read markers only while you can see the chat.** Window focus drives `client.setForeground`, and the SDK only marks an open chat read while the app is in the foreground.
 
 ## Tests
 
-`./gradlew test` runs an end-to-end test against a real server when you give it two accounts, and is skipped otherwise:
+`ScreenshotTest` draws every screen with sample data into `build/screenshots`, off-screen, with no server or display. CI runs it on every pull request; run the Build workflow by hand on a branch to commit fresh pictures to [docs/screenshots](docs/screenshots).
+
+`./gradlew test` also runs an end-to-end test against a real server when you give it two accounts, and is skipped otherwise:
 
 ```sh
 TETHER_A_JID=alice@example.com TETHER_A_PASSWORD=... \
