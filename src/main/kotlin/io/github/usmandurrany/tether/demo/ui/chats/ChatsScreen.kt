@@ -196,8 +196,8 @@ private fun RequestCard(request: ContactRequest, actions: ChatsActions) {
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
-                Button(onClick = { actions.answer(request.from, true) }, contentPadding = ButtonDefaults.SmallButtonContentPadding, modifier = Modifier.height(34.dp)) { Text("Accept") }
-                OutlinedButton(onClick = { actions.answer(request.from, false) }, contentPadding = ButtonDefaults.SmallButtonContentPadding, modifier = Modifier.height(34.dp)) { Text("Decline") }
+                Button(onClick = { actions.answer(request.from, true) }, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp), modifier = Modifier.height(34.dp)) { Text("Accept") }
+                OutlinedButton(onClick = { actions.answer(request.from, false) }, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp), modifier = Modifier.height(34.dp)) { Text("Decline") }
             }
         }
     }

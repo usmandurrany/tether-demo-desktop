@@ -85,8 +85,9 @@ fun SignInScreen(
 
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
         val wide = maxWidth >= 900.dp
+        val welcomeWidth = (maxWidth * 0.42f).coerceIn(360.dp, 560.dp)
         Row(Modifier.fillMaxSize()) {
-            if (wide) Welcome(Modifier.width((maxWidth * 0.42f).coerceIn(360.dp, 560.dp)).fillMaxHeight())
+            if (wide) Welcome(Modifier.width(welcomeWidth).fillMaxHeight())
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 val scroll = rememberScrollState()
                 Column(
