@@ -48,6 +48,8 @@ cd tether-demo-desktop
 ./gradlew run            # Windows: gradlew.bat run
 ```
 
+On Linux the app reads your display scaling (`GDK_SCALE`, `Xft.dpi` or GNOME's setting) because Java doesn't. If the UI still looks too small or too big, set it yourself: `java -Dsun.java2d.uiScale=2 -jar …`.
+
 To hand it to a tester, build a single jar and run it with Java 17+ on the same kind of OS you built it on (Compose bundles the graphics library for that OS):
 
 ```sh
