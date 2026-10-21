@@ -50,11 +50,16 @@ import io.github.usmandurrany.tether.demo.ui.theme.MonoStyle
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun LogScreen(session: DemoSession) {
+fun LogRoute(session: DemoSession) {
     val vm = viewModel { LogViewModel(session) }
     val state by vm.state.collectAsState()
+    LogScreen(state, onOptions = vm::update, onClear = vm::clear)
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun LogScreen(state: LogViewModel.State, onOptions: ((LogViewModel.Options) -> LogViewModel.Options) -> Unit = {}, onClear: () -> Unit = {}) {
     val o = state.options
     val list = rememberLazyListState()
     LaunchedEffect(state.lines.size, o.follow) {
@@ -64,10 +69,10 @@ fun LogScreen(session: DemoSession) {
         ScreenTitle("Debug log", "Every stanza sent and received, with credentials always redacted.")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically) {
             TextField(
-                o.filter, { f -> vm.update { it.copy(filter = f) } },
+                o.filter, { f -> onOptions { it.copy(filter = f) } },
                 placeholder = { Text("Filter, e.g. roster or message") },
                 leadingIcon = { Icon(AppIcons.Search, null, Modifier.size(18.dp)) },
-                trailingIcon = if (o.filter.isNotEmpty()) ({ ToolButton(AppIcons.Close, "Clear", { vm.update { it.copy(filter = "") } }) }) else null,
+                trailingIcon = if (o.filter.isNotEmpty()) ({ ToolButton(AppIcons.Close, "Clear", { onOptions { it.copy(filter = "") } }) }) else null,
                 singleLine = true,
                 shape = CircleShape,
                 colors = TextFieldDefaults.colors(
@@ -77,10 +82,10 @@ fun LogScreen(session: DemoSession) {
                 textStyle = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.widthIn(min = 240.dp, max = 360.dp).height(48.dp),
             )
-            Chip("Stanzas only", o.stanzasOnly) { vm.update { it.copy(stanzasOnly = !it.stanzasOnly) } }
-            Chip("Indent XML", o.pretty) { vm.update { it.copy(pretty = !it.pretty) } }
-            Chip("Follow", o.follow) { vm.update { it.copy(follow = !it.follow) } }
-            Action("Clear", AppIcons.Trash, vm::clear)
+            Chip("Stanzas only", o.stanzasOnly) { onOptions { it.copy(stanzasOnly = !it.stanzasOnly) } }
+            Chip("Indent XML", o.pretty) { onOptions { it.copy(pretty = !it.pretty) } }
+            Chip("Follow", o.follow) { onOptions { it.copy(follow = !it.follow) } }
+            Action("Clear", AppIcons.Trash, onClear)
             Action("Copy all", AppIcons.Copy) { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(state.lines.joinToString("\n")), null) }
         }
         Text(

@@ -51,16 +51,27 @@ import io.github.usmandurrany.tether.demo.ui.theme.TetherTheme
 import io.github.usmandurrany.tether.im.PushState
 
 @Composable
-fun ServerScreen(session: DemoSession) {
+fun ServerRoute(session: DemoSession) {
     val vm = viewModel { ServerViewModel(session) }
     val state by vm.state.collectAsState()
+    ServerScreen(state, onCheckNow = vm::checkNow, onRegister = vm::register, onUnregister = vm::unregister)
+}
+
+/** [onRegister] returns a problem to show, or null. */
+@Composable
+fun ServerScreen(
+    state: ServerViewModel.State,
+    onCheckNow: () -> Unit = {},
+    onRegister: (service: String, node: String, options: String, createNode: Boolean) -> String? = { _, _, _, _ -> null },
+    onUnregister: () -> Unit = {},
+) {
     val scroll = rememberScrollState()
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = 28.dp, vertical = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Column(Modifier.widthIn(max = 820.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 ScreenTitle("Server", "What this server offers on the current session. Tether only turns on what the server advertises.")
-                SessionCard(state, vm)
-                PushCard(state.push, vm)
+                SessionCard(state, onCheckNow)
+                PushCard(state.push, onRegister, onUnregister)
                 FeaturesCard(state)
             }
         }
@@ -69,25 +80,23 @@ fun ServerScreen(session: DemoSession) {
 }
 
 @Composable
-private fun SessionCard(state: ServerViewModel.State, vm: ServerViewModel) {
+private fun SessionCard(state: ServerViewModel.State, onCheckNow: () -> Unit) {
     SectionCard("Session", "Live details of this connection") {
-        val live = state.live
+        val live = state.session
         if (live == null) {
             Text("No live session (${describe(state.connection).first}).", color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
-            val caps = live.capabilities
-            val identity = caps.server.identities.firstOrNull()?.let { listOfNotNull(it.name, "${it.category}/${it.type}").joinToString(" ") }
             Column {
-                InfoRow("Bound address") { Text(live.jid.toString(), style = MaterialTheme.typography.titleSmall) }
-                InfoRow("Server") { Text(identity ?: "unknown", style = MaterialTheme.typography.titleSmall) }
+                InfoRow("Bound address") { Text(live.jid, style = MaterialTheme.typography.titleSmall) }
+                InfoRow("Server") { Text(live.server ?: "unknown", style = MaterialTheme.typography.titleSmall) }
                 InfoRow("Resumed session") { Pill(if (live.resumed) "Yes" else "No", live.resumed) }
-                InfoRow("Stream Management (XEP-0198)") { OnOff(live.streamManagement != null) }
+                InfoRow("Stream Management (XEP-0198)") { OnOff(live.streamManagement) }
                 InfoRow("Message carbons (XEP-0280)") { OnOff(state.carbons) }
                 InfoRow("Message archive (XEP-0313)") { Pill(if (state.history) "Available" else "Not offered", state.history) }
-                InfoRow("Client state indication (XEP-0352)", last = true) { OnOff(caps.hasStreamFeature("csi", "urn:xmpp:csi:0")) }
+                InfoRow("Client state indication (XEP-0352)", last = true) { OnOff(live.csi) }
             }
         }
-        OutlinedButton(onClick = vm::checkNow) {
+        OutlinedButton(onClick = onCheckNow) {
             Icon(AppIcons.Refresh, null, Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
             Text("Check connection now")
@@ -99,7 +108,7 @@ private fun SessionCard(state: ServerViewModel.State, vm: ServerViewModel) {
 private fun OnOff(on: Boolean) = Pill(if (on) "On" else "Off", on)
 
 @Composable
-private fun PushCard(push: PushState, vm: ServerViewModel) {
+private fun PushCard(push: PushState, onRegister: (String, String, String, Boolean) -> String?, onUnregister: () -> Unit) {
     var service by remember { mutableStateOf("") }
     var node by remember { mutableStateOf("") }
     var options by remember { mutableStateOf("") }
@@ -131,8 +140,8 @@ private fun PushCard(push: PushState, vm: ServerViewModel) {
             Text(problem ?: text, style = MaterialTheme.typography.bodyMedium, color = if (problem != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { problem = vm.register(service, node, options, create) }) { Text("Register") }
-            OutlinedButton(onClick = vm::unregister) { Text("Unregister") }
+            Button(onClick = { problem = onRegister(service, node, options, create) }) { Text("Register") }
+            OutlinedButton(onClick = onUnregister) { Text("Unregister") }
         }
     }
 }
@@ -140,18 +149,7 @@ private fun PushCard(push: PushState, vm: ServerViewModel) {
 @Composable
 private fun FeaturesCard(state: ServerViewModel.State) {
     SectionCard("Advertised features", "Stream features and service discovery, as the server sent them") {
-        val live = state.live
-        val text = if (live == null) "Not connected." else buildString {
-            val caps = live.capabilities
-            appendLine("Stream features")
-            caps.streamFeatures.elements.forEach { appendLine("  ${it.name}  (${it.namespace})") }
-            appendLine()
-            appendLine("Server (disco#info)")
-            caps.server.features.sorted().forEach { appendLine("  $it") }
-            appendLine()
-            appendLine("Your account (disco#info)")
-            caps.account.features.sorted().forEach { appendLine("  $it") }
-        }.trimEnd()
+        val text = state.session?.features ?: "Not connected."
         SelectionContainer {
             Text(
                 text, style = MonoStyle,

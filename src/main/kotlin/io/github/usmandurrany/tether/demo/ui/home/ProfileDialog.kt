@@ -38,7 +38,7 @@ import java.io.File
  * and a picture. Contacts see it, and your picture shows in their lists.
  */
 @Composable
-fun ProfileDialog(home: HomeViewModel, current: Profile?, fallbackName: String, onDismiss: () -> Unit) {
+fun ProfileDialog(onSave: suspend ((Profile) -> Profile) -> Result<Unit>, current: Profile?, fallbackName: String, onDismiss: () -> Unit) {
     val p = current ?: Profile()
     var fullName by remember { mutableStateOf(p.fullName.orEmpty()) }
     var nickname by remember { mutableStateOf(p.nickname.orEmpty()) }
@@ -90,7 +90,7 @@ fun ProfileDialog(home: HomeViewModel, current: Profile?, fallbackName: String, 
                 saving = true
                 scope.launch {
                     fun String.value() = trim().ifEmpty { null }
-                    home.saveProfile {
+                    onSave {
                         it.copy(fullName = fullName.value(), nickname = nickname.value(), email = email.value(), phone = phone.value(), note = note.value(), avatar = avatar)
                     }.onSuccess { onDismiss() }.onFailure { problem = "The server didn't save it: ${it.message}" }
                     saving = false

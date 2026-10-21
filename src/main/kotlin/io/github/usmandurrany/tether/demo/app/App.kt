@@ -20,7 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.usmandurrany.tether.demo.AppPaths
 import io.github.usmandurrany.tether.demo.ViewModelScope
-import io.github.usmandurrany.tether.demo.ui.home.HomeScreen
+import io.github.usmandurrany.tether.demo.ui.home.HomeRoute
 import io.github.usmandurrany.tether.demo.ui.signin.SignInScreen
 import io.github.usmandurrany.tether.demo.ui.theme.AppIcons
 import io.github.usmandurrany.tether.demo.ui.theme.MonoStyle
@@ -38,11 +38,18 @@ fun App(app: AppViewModel, onQuit: () -> Unit) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             val current = session
             if (current == null) {
-                SignInScreen(app, onShowFiles = { showFiles = true })
+                val signIn by app.signIn.collectAsState()
+                SignInScreen(
+                    signIn,
+                    onEdit = app::edit,
+                    onConnect = app::connect,
+                    onToggleTheme = app::toggleTheme,
+                    onShowFiles = { showFiles = true },
+                )
             } else {
                 // One set of ViewModels per signed-in session, cleared when it ends.
                 ViewModelScope(current) {
-                    HomeScreen(
+                    HomeRoute(
                         session = current,
                         dark = dark,
                         onToggleTheme = app::toggleTheme,

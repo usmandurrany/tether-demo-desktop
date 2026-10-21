@@ -96,23 +96,24 @@ import java.awt.datatransfer.StringSelection
 fun Conversation(
     state: ChatsViewModel.State,
     item: ChatItem,
-    vm: ChatsViewModel,
+    actions: ChatsActions,
     showBack: Boolean,
     onDialog: (ChatDialog) -> Unit,
     modifier: Modifier,
+    menuOpenFor: String? = null,
 ) {
     Column(modifier.background(MaterialTheme.colorScheme.background)) {
-        Header(item, vm, showBack, onDialog)
+        Header(item, actions, showBack, onDialog)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         key(item.jid) {
-            Messages(state, vm, onDialog, Modifier.weight(1f))
-            Composer(item, vm, onDialog)
+            Messages(state, actions, onDialog, Modifier.weight(1f), menuOpenFor)
+            Composer(item, actions, onDialog)
         }
     }
 }
 
 @Composable
-private fun Header(item: ChatItem, vm: ChatsViewModel, showBack: Boolean, onDialog: (ChatDialog) -> Unit) {
+private fun Header(item: ChatItem, actions: ChatsActions, showBack: Boolean, onDialog: (ChatDialog) -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Surface(color = MaterialTheme.colorScheme.surface) {
         Row(
@@ -120,7 +121,7 @@ private fun Header(item: ChatItem, vm: ChatsViewModel, showBack: Boolean, onDial
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (showBack) ToolButton(AppIcons.Back, "Back to chats", vm::close)
+            if (showBack) ToolButton(AppIcons.Back, "Back to chats", actions::close)
             Avatar(item.avatar, item.name, 42.dp, presence = presenceColor(item.show, item.online))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(item.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -135,7 +136,7 @@ private fun Header(item: ChatItem, vm: ChatsViewModel, showBack: Boolean, onDial
             }
             Box {
                 ToolButton(AppIcons.More, "Contact options", { menu = true })
-                ContactDropdown(item, vm, menu, onDismiss = { menu = false }, onDialog = onDialog)
+                ContactDropdown(item, actions, menu, onDismiss = { menu = false }, onDialog = onDialog)
             }
         }
     }
@@ -169,7 +170,7 @@ private fun entries(messages: List<Message>): List<Entry> {
 }
 
 @Composable
-private fun Messages(state: ChatsViewModel.State, vm: ChatsViewModel, onDialog: (ChatDialog) -> Unit, modifier: Modifier) {
+private fun Messages(state: ChatsViewModel.State, actions: ChatsActions, onDialog: (ChatDialog) -> Unit, modifier: Modifier, menuOpenFor: String?) {
     val list = rememberLazyListState()
     val items = remember(state.messages) { entries(state.messages) }
     val newest = state.messages.lastOrNull()
@@ -188,7 +189,7 @@ private fun Messages(state: ChatsViewModel.State, vm: ChatsViewModel, onDialog: 
             items(items, key = { it.key }) { entry ->
                 when (entry) {
                     is Entry.Day -> DayChip(entry.label)
-                    is Entry.Bubble -> MessageRow(entry.message, entry.first, bubbleMax, vm, onDialog)
+                    is Entry.Bubble -> MessageRow(entry.message, entry.first, bubbleMax, actions, onDialog, menuInitiallyOpen = entry.message.id == menuOpenFor)
                 }
             }
             if (state.messages.isEmpty()) {
@@ -201,7 +202,7 @@ private fun Messages(state: ChatsViewModel.State, vm: ChatsViewModel, onDialog: 
             if (state.canLoadOlder) {
                 item(key = "older") {
                     Box(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = Alignment.Center) {
-                        OutlinedButton(onClick = vm::loadOlder, enabled = !state.loadingOlder, shape = CircleShape) {
+                        OutlinedButton(onClick = actions::loadOlder, enabled = !state.loadingOlder, shape = CircleShape) {
                             Icon(AppIcons.Clock, null, Modifier.size(16.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(if (state.loadingOlder) "Loading…" else "Load older messages")
@@ -235,7 +236,14 @@ private enum class Look { IN, OUT, FAILED, DELETED }
  * Right-click it, or use the ⋯ that appears on hover, to copy or delete.
  */
 @Composable
-private fun MessageRow(m: Message, first: Boolean, maxWidth: androidx.compose.ui.unit.Dp, vm: ChatsViewModel, onDialog: (ChatDialog) -> Unit) {
+private fun MessageRow(
+    m: Message,
+    first: Boolean,
+    maxWidth: androidx.compose.ui.unit.Dp,
+    actions: ChatsActions,
+    onDialog: (ChatDialog) -> Unit,
+    menuInitiallyOpen: Boolean,
+) {
     val look = when {
         m.deleted -> Look.DELETED
         m.outgoing && m.status == MessageStatus.FAILED -> Look.FAILED
@@ -244,8 +252,8 @@ private fun MessageRow(m: Message, first: Boolean, maxWidth: androidx.compose.ui
     }
     val hover = remember { MutableInteractionSource() }
     val hovered by hover.collectIsHoveredAsState()
-    var menu by remember { mutableStateOf(false) }
-    val actions = messageActions(m, vm, onDialog)
+    var menu by remember { mutableStateOf(menuInitiallyOpen) }
+    val items = messageActions(m, actions, onDialog)
 
     Row(
         Modifier.fillMaxWidth().hoverable(hover).padding(top = if (first) 10.dp else 2.dp),
@@ -256,7 +264,7 @@ private fun MessageRow(m: Message, first: Boolean, maxWidth: androidx.compose.ui
             Box(Modifier.alpha(if (hovered || menu) 1f else 0f)) {
                 ToolButton(AppIcons.More, "More", { menu = true }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 DropdownMenu(menu, { menu = false }) {
-                    actions.forEach { a ->
+                    items.forEach { a ->
                         val color = if (a.danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                         DropdownMenuItem(
                             text = { Text(a.label, color = color) },
@@ -268,7 +276,7 @@ private fun MessageRow(m: Message, first: Boolean, maxWidth: androidx.compose.ui
             }
         }
         if (m.outgoing) moreButton()
-        ContextMenuArea(items = { actions.map { a -> ContextMenuItem(a.label, a.run) } }) {
+        ContextMenuArea(items = { items.map { a -> ContextMenuItem(a.label, a.run) } }) {
             Bubble(m, look, first, Modifier.widthIn(max = maxWidth))
         }
         if (!m.outgoing) moreButton()
@@ -277,14 +285,14 @@ private fun MessageRow(m: Message, first: Boolean, maxWidth: androidx.compose.ui
 
 private class Action(val label: String, val icon: ImageVector, val danger: Boolean = false, val run: () -> Unit)
 
-private fun messageActions(m: Message, vm: ChatsViewModel, onDialog: (ChatDialog) -> Unit): List<Action> = buildList {
+private fun messageActions(m: Message, actions: ChatsActions, onDialog: (ChatDialog) -> Unit): List<Action> = buildList {
     if (!m.deleted && m.body.isNotBlank()) add(Action("Copy text", AppIcons.Copy) { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(m.body), null) })
-    if (m.outgoing && m.status == MessageStatus.FAILED) add(Action("Try again", AppIcons.Refresh) { vm.retry(m) })
+    if (m.outgoing && m.status == MessageStatus.FAILED) add(Action("Try again", AppIcons.Refresh) { actions.retry(m) })
     if (m.deleted) {
-        add(Action("Remove", AppIcons.Trash) { vm.deleteForMe(m) })
+        add(Action("Remove", AppIcons.Trash) { actions.deleteForMe(m) })
     } else {
         if (m.outgoing && m.status != MessageStatus.FAILED) add(Action("Delete for everyone", AppIcons.Trash, danger = true) { onDialog(ChatDialog.DeleteForEveryone(m)) })
-        add(Action("Delete for me", AppIcons.Trash) { vm.deleteForMe(m) })
+        add(Action("Delete for me", AppIcons.Trash) { actions.deleteForMe(m) })
     }
 }
 
@@ -456,7 +464,7 @@ private fun Tile(icon: ImageVector, title: String, detail: String, onAccent: Boo
  * sends, Shift+Enter starts a new line) and a round send button.
  */
 @Composable
-private fun Composer(item: ChatItem, vm: ChatsViewModel, onDialog: (ChatDialog) -> Unit) {
+private fun Composer(item: ChatItem, actions: ChatsActions, onDialog: (ChatDialog) -> Unit) {
     var text by remember { mutableStateOf("") }
     var attach by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
@@ -464,7 +472,7 @@ private fun Composer(item: ChatItem, vm: ChatsViewModel, onDialog: (ChatDialog) 
     val send = {
         val t = text.trim()
         if (t.isNotEmpty()) {
-            vm.send(t)
+            actions.send(t)
             text = ""
         }
     }
@@ -495,7 +503,7 @@ private fun Composer(item: ChatItem, vm: ChatsViewModel, onDialog: (ChatDialog) 
                 TextField(
                     text,
                     { new ->
-                        if (new.length > text.length) vm.typing()
+                        if (new.length > text.length) actions.typing()
                         text = new
                     },
                     placeholder = { Text("Message ${item.name}", maxLines = 1, overflow = TextOverflow.Ellipsis) },

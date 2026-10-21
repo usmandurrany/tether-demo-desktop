@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.usmandurrany.tether.core.ConnectionState
 import io.github.usmandurrany.tether.demo.DemoSession
-import io.github.usmandurrany.tether.demo.ui.chats.ChatsScreen
+import io.github.usmandurrany.tether.demo.ui.chats.ChatsRoute
 import io.github.usmandurrany.tether.demo.ui.components.Avatar
 import io.github.usmandurrany.tether.demo.ui.components.BrandMark
 import io.github.usmandurrany.tether.demo.ui.components.Dot
@@ -55,22 +55,33 @@ import io.github.usmandurrany.tether.demo.ui.components.TextInputDialog
 import io.github.usmandurrany.tether.demo.ui.components.ToolButton
 import io.github.usmandurrany.tether.demo.ui.components.healthColor
 import io.github.usmandurrany.tether.demo.ui.describe
-import io.github.usmandurrany.tether.demo.ui.log.LogScreen
-import io.github.usmandurrany.tether.demo.ui.server.ServerScreen
+import io.github.usmandurrany.tether.demo.ui.log.LogRoute
+import io.github.usmandurrany.tether.demo.ui.server.ServerRoute
 import io.github.usmandurrany.tether.demo.ui.theme.AppIcons
 import io.github.usmandurrany.tether.demo.ui.theme.TetherTheme
+import io.github.usmandurrany.tether.im.Profile
 
-private enum class Destination(val label: String, val icon: ImageVector) {
+enum class Destination(val label: String, val icon: ImageVector) {
     CHATS("Chats", AppIcons.Chat), SERVER("Server", AppIcons.Server), LOG("Log", AppIcons.Log)
 }
 
-/**
- * Everything shown while signed in: a navigation rail (Chats, Server, Log,
- * and you at the bottom) beside the chosen screen. A slim banner above the
- * screen says when the connection isn't online.
- */
+/** What the rail and the account menu can do. */
+class HomeActions(
+    val onNavigate: (Destination) -> Unit = {},
+    val onToggleTheme: () -> Unit = {},
+    val onSetPresence: (Presence) -> Unit = {},
+    val onSetStatusMessage: (String) -> Unit = {},
+    /** Saves your profile; gets the current one to change. */
+    val onSaveProfile: suspend ((Profile) -> Profile) -> Result<Unit> = { Result.success(Unit) },
+    val onDisconnect: () -> Unit = {},
+    val onLogOut: () -> Unit = {},
+    val onReconnect: () -> Unit = {},
+    val onShowFiles: () -> Unit = {},
+    val onQuit: () -> Unit = {},
+)
+
 @Composable
-fun HomeScreen(
+fun HomeRoute(
     session: DemoSession,
     dark: Boolean,
     onToggleTheme: () -> Unit,
@@ -83,7 +94,42 @@ fun HomeScreen(
     val home = viewModel { HomeViewModel(session) }
     val state by home.state.collectAsState()
     var destination by rememberSaveable { mutableStateOf(Destination.CHATS) }
+    val actions = HomeActions(
+        onNavigate = { destination = it },
+        onToggleTheme = onToggleTheme,
+        onSetPresence = home::setPresence,
+        onSetStatusMessage = home::setStatusMessage,
+        onSaveProfile = { edit -> home.saveProfile(edit) },
+        onDisconnect = onDisconnect,
+        onLogOut = onLogOut,
+        onReconnect = onReconnect,
+        onShowFiles = onShowFiles,
+        onQuit = onQuit,
+    )
+    HomeScreen(state, destination, dark, actions) { d ->
+        when (d) {
+            Destination.CHATS -> ChatsRoute(session)
+            Destination.SERVER -> ServerRoute(session)
+            Destination.LOG -> LogRoute(session)
+        }
+    }
+}
 
+/**
+ * Everything shown while signed in: a navigation rail (Chats, Server, Log,
+ * and you at the bottom) beside the chosen screen, drawn by [content]. A slim
+ * banner above the screen says when the connection isn't online.
+ * [accountMenuOpen] opens the account menu, for screenshots.
+ */
+@Composable
+fun HomeScreen(
+    state: HomeViewModel.State,
+    destination: Destination,
+    dark: Boolean,
+    actions: HomeActions,
+    accountMenuOpen: Boolean = false,
+    content: @Composable (Destination) -> Unit,
+) {
     Row(Modifier.fillMaxSize()) {
         NavigationRail(
             containerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -94,7 +140,7 @@ fun HomeScreen(
                 Destination.entries.forEach { d ->
                     NavigationRailItem(
                         selected = d == destination,
-                        onClick = { destination = d },
+                        onClick = { actions.onNavigate(d) },
                         icon = {
                             BadgedBox(badge = { if (d == Destination.CHATS && state.unread > 0) Badge { Text(if (state.unread > 99) "99+" else "${state.unread}") } }) {
                                 Icon(d.icon, contentDescription = d.label, modifier = Modifier.size(22.dp))
@@ -107,21 +153,15 @@ fun HomeScreen(
                 }
             }
             Spacer(Modifier.weight(1f))
-            ToolButton(if (dark) AppIcons.Sun else AppIcons.Moon, "Switch between light and dark", onToggleTheme)
+            ToolButton(if (dark) AppIcons.Sun else AppIcons.Moon, "Switch between light and dark", actions.onToggleTheme)
             Spacer(Modifier.height(8.dp))
-            AccountButton(home, state, onDisconnect, onLogOut, onReconnect, onShowFiles, onQuit)
+            AccountButton(state, actions, accountMenuOpen)
             Spacer(Modifier.height(16.dp))
         }
         VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Column(Modifier.fillMaxSize()) {
-            ConnectionBanner(state.connection, onReconnect)
-            Box(Modifier.weight(1f)) {
-                when (destination) {
-                    Destination.CHATS -> ChatsScreen(session)
-                    Destination.SERVER -> ServerScreen(session)
-                    Destination.LOG -> LogScreen(session)
-                }
-            }
+            ConnectionBanner(state.connection, actions.onReconnect)
+            Box(Modifier.weight(1f)) { content(destination) }
         }
     }
 }
@@ -147,20 +187,12 @@ private fun ConnectionBanner(state: ConnectionState, onReconnect: () -> Unit) {
 
 /** Your picture with your presence dot; opens a menu with presence, profile and sign-out. */
 @Composable
-private fun AccountButton(
-    home: HomeViewModel,
-    state: HomeViewModel.State,
-    onDisconnect: () -> Unit,
-    onLogOut: () -> Unit,
-    onReconnect: () -> Unit,
-    onShowFiles: () -> Unit,
-    onQuit: () -> Unit,
-) {
-    var open by remember { mutableStateOf(false) }
+private fun AccountButton(state: HomeViewModel.State, actions: HomeActions, initiallyOpen: Boolean) {
+    var open by remember { mutableStateOf(initiallyOpen) }
     var editStatus by remember { mutableStateOf(false) }
     var editProfile by remember { mutableStateOf(false) }
     val online = state.connection is ConnectionState.Online
-    val name = state.profile?.displayName ?: home.account.local.orEmpty()
+    val name = state.profile?.displayName ?: state.account.local.orEmpty()
     val dot = if (online) presenceColor(state.presence) else TetherTheme.chat.offline
 
     Box {
@@ -175,7 +207,7 @@ private fun AccountButton(
                 Avatar(state.profile?.avatar, name, 44.dp)
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(name, style = MaterialTheme.typography.titleSmall)
-                    Text(home.account.toString(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(state.account.toString(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     val (text, health) = describe(state.connection)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Dot(healthColor(health), 7.dp)
@@ -191,29 +223,29 @@ private fun AccountButton(
                     leadingIcon = { Box(Modifier.width(18.dp), contentAlignment = Alignment.Center) { Dot(presenceColor(p), 10.dp) } },
                     trailingIcon = { if (p == state.presence) Icon(AppIcons.Check, null, Modifier.size(16.dp)) },
                     enabled = online,
-                    onClick = { home.setPresence(p); open = false },
+                    onClick = { actions.onSetPresence(p); open = false },
                 )
             }
             MenuItem(if (state.statusMessage == null) "Set a status message…" else "Change status message…", AppIcons.Edit, enabled = online) {
                 editStatus = true; open = false
             }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
-            if (home.profilesEnabled) MenuItem("Edit profile…", AppIcons.User, enabled = online) { editProfile = true; open = false }
-            MenuItem("Where are my files?", AppIcons.Folder) { onShowFiles(); open = false }
+            if (state.profilesEnabled) MenuItem("Edit profile…", AppIcons.User, enabled = online) { editProfile = true; open = false }
+            MenuItem("Where are my files?", AppIcons.Folder) { actions.onShowFiles(); open = false }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
-            if (state.connection is ConnectionState.Terminal) MenuItem("Reconnect", AppIcons.Refresh) { onReconnect(); open = false }
-            MenuItem("Disconnect", AppIcons.Power, hint = "Keeps the saved login") { onDisconnect(); open = false }
-            MenuItem("Log out", AppIcons.LogOut, danger = true, hint = "Forgets the saved login and chats") { onLogOut(); open = false }
-            MenuItem("Quit", AppIcons.Close) { onQuit(); open = false }
+            if (state.connection is ConnectionState.Terminal) MenuItem("Reconnect", AppIcons.Refresh) { actions.onReconnect(); open = false }
+            MenuItem("Disconnect", AppIcons.Power, hint = "Keeps the saved login") { actions.onDisconnect(); open = false }
+            MenuItem("Log out", AppIcons.LogOut, danger = true, hint = "Forgets the saved login and chats") { actions.onLogOut(); open = false }
+            MenuItem("Quit", AppIcons.Close) { actions.onQuit(); open = false }
         }
     }
     if (editStatus) {
         TextInputDialog(
             "Status message", "What are you up to?", state.statusMessage.orEmpty(), "Save",
-            onDismiss = { editStatus = false }, supporting = "Leave empty to clear it.", onConfirm = home::setStatusMessage,
+            onDismiss = { editStatus = false }, supporting = "Leave empty to clear it.", onConfirm = actions.onSetStatusMessage,
         )
     }
-    if (editProfile) ProfileDialog(home, state.profile, name, onDismiss = { editProfile = false })
+    if (editProfile) ProfileDialog(actions.onSaveProfile, state.profile, name, onDismiss = { editProfile = false })
 }
 
 @Composable

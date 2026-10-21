@@ -48,6 +48,4 @@ class LogViewModel(private val session: DemoSession) : ViewModel() {
     fun update(change: (Options) -> Options) = options.update(change)
 
     fun clear() = session.logs.clear()
-
-    val portalEnabled = session.remoteLogs != null
 }

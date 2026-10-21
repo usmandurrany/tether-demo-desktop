@@ -62,6 +62,8 @@ compose.desktop {
 
 tasks.test {
     useJUnitPlatform()
+    // ScreenshotTest draws off-screen; it needs no display.
+    systemProperty("java.awt.headless", "true")
 }
 
 // A single runnable jar for this OS: `./gradlew packageJar`, then `java -jar build/libs/tether-demo-desktop-<version>-all.jar`.

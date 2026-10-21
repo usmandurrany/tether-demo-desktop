@@ -45,11 +45,11 @@ private fun FormDialog(title: String, confirm: String, onDismiss: () -> Unit, on
 private fun isLink(s: String) = s.startsWith("https://") || s.startsWith("http://")
 
 @Composable
-fun AddContactDialog(vm: ChatsViewModel, onDismiss: () -> Unit) {
+fun AddContactDialog(actions: ChatsActions, onDismiss: () -> Unit) {
     var address by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var group by remember { mutableStateOf("") }
-    FormDialog("Add a contact", "Add", onDismiss, onConfirm = { vm.addContact(address, name, group) }) {
+    FormDialog("Add a contact", "Add", onDismiss, onConfirm = { actions.addContact(address, name, group) }) {
         Field("Address", address, { address = it }, placeholder = "bob@example.com")
         Field("Name", name, { name = it }, placeholder = "Optional", hint = "How they show in your list. Leave empty to use the name in their profile.")
         Field("Group", group, { group = it }, placeholder = "Optional")
@@ -57,11 +57,11 @@ fun AddContactDialog(vm: ChatsViewModel, onDismiss: () -> Unit) {
 }
 
 @Composable
-fun PhotoDialog(vm: ChatsViewModel, onDismiss: () -> Unit) {
+fun PhotoDialog(actions: ChatsActions, onDismiss: () -> Unit) {
     var url by remember { mutableStateOf("https://picsum.photos/id/1015/800/533.jpg") }
     var caption by remember { mutableStateOf("") }
     FormDialog("Send a photo", "Send", onDismiss, onConfirm = {
-        if (!isLink(url.trim())) "Enter a link that starts with https:// or http://." else null.also { vm.sendPhoto(url.trim(), caption.trim()) }
+        if (!isLink(url.trim())) "Enter a link that starts with https:// or http://." else null.also { actions.sendPhoto(url.trim(), caption.trim()) }
     }) {
         Field("Photo link", url, { url = it }, hint = "A photo already online. The demo reads its size and dimensions to send with it.")
         Field("Caption", caption, { caption = it }, placeholder = "Optional")
@@ -69,12 +69,12 @@ fun PhotoDialog(vm: ChatsViewModel, onDismiss: () -> Unit) {
 }
 
 @Composable
-fun VideoDialog(vm: ChatsViewModel, onDismiss: () -> Unit) {
+fun VideoDialog(actions: ChatsActions, onDismiss: () -> Unit) {
     var url by remember { mutableStateOf("https://download.samplelib.com/mp4/sample-5s.mp4") }
     var seconds by remember { mutableStateOf("5") }
     var caption by remember { mutableStateOf("") }
     FormDialog("Send a video", "Send", onDismiss, onConfirm = {
-        if (!isLink(url.trim())) "Enter a link that starts with https:// or http://." else null.also { vm.sendVideo(url.trim(), seconds.trim().toIntOrNull(), caption.trim()) }
+        if (!isLink(url.trim())) "Enter a link that starts with https:// or http://." else null.also { actions.sendVideo(url.trim(), seconds.trim().toIntOrNull(), caption.trim()) }
     }) {
         Field("Video link", url, { url = it })
         Field("Length in seconds", seconds, { seconds = it })
@@ -83,7 +83,7 @@ fun VideoDialog(vm: ChatsViewModel, onDismiss: () -> Unit) {
 }
 
 @Composable
-fun LocationDialog(vm: ChatsViewModel, onDismiss: () -> Unit) {
+fun LocationDialog(actions: ChatsActions, onDismiss: () -> Unit) {
     var lat by remember { mutableStateOf("51.50135") }
     var lon by remember { mutableStateOf("-0.14189") }
     var label by remember { mutableStateOf("Buckingham Palace") }
@@ -93,7 +93,7 @@ fun LocationDialog(vm: ChatsViewModel, onDismiss: () -> Unit) {
         if (la == null || lo == null || la !in -90.0..90.0 || lo !in -180.0..180.0) {
             "Enter a latitude (-90 to 90) and longitude (-180 to 180)."
         } else {
-            null.also { vm.sendLocation(la, lo, label.trim().ifEmpty { null }) }
+            null.also { actions.sendLocation(la, lo, label.trim().ifEmpty { null }) }
         }
     }) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -106,11 +106,11 @@ fun LocationDialog(vm: ChatsViewModel, onDismiss: () -> Unit) {
 
 /** Any type and fields: the receiver shows them as they arrive, whatever they are. */
 @Composable
-fun CustomDataDialog(vm: ChatsViewModel, onDismiss: () -> Unit) {
+fun CustomDataDialog(actions: ChatsActions, onDismiss: () -> Unit) {
     var type by remember { mutableStateOf("contact-card") }
     var fields by remember { mutableStateOf("name=Ada Lovelace\nphone=+44 20 7946 0000") }
     var caption by remember { mutableStateOf("") }
-    FormDialog("Send custom data", "Send", onDismiss, onConfirm = { vm.sendCustom(type, fields, caption) }) {
+    FormDialog("Send custom data", "Send", onDismiss, onConfirm = { actions.sendCustom(type, fields, caption) }) {
         Field("Type", type, { type = it }, hint = "Letters, digits, - _ and . only.")
         OutlinedTextField(
             fields, { fields = it },

@@ -34,7 +34,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,12 +66,22 @@ import io.github.usmandurrany.tether.demo.ui.theme.isDark
  * Wide windows get a welcome panel on the left.
  */
 @Composable
-fun SignInScreen(app: AppViewModel, onShowFiles: () -> Unit) {
-    val state by app.signIn.collectAsState()
+fun SignInScreen(
+    state: AppViewModel.SignInState,
+    onEdit: (ConnectionSettings) -> Unit = {},
+    onConnect: (ConnectionSettings, password: String) -> Unit = { _, _ -> },
+    onToggleTheme: () -> Unit = {},
+    onShowFiles: () -> Unit = {},
+) {
     var password by remember { mutableStateOf("") }
     val form = state.settings
-    val edit: (ConnectionSettings) -> Unit = app::edit
-    val submit = { if (!state.busy) app.connect(form, password).also { password = "" } }
+    val edit = onEdit
+    val submit = {
+        if (!state.busy) {
+            onConnect(form, password)
+            password = ""
+        }
+    }
 
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
         val wide = maxWidth >= 900.dp
@@ -126,7 +135,7 @@ fun SignInScreen(app: AppViewModel, onShowFiles: () -> Unit) {
                     ToolButton(
                         if (MaterialTheme.colorScheme.isDark) AppIcons.Sun else AppIcons.Moon,
                         "Switch between light and dark",
-                        app::toggleTheme,
+                        onToggleTheme,
                     )
                 }
             }

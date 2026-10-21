@@ -71,27 +71,37 @@ import io.github.usmandurrany.tether.demo.ui.components.TextInputDialog
 import io.github.usmandurrany.tether.demo.ui.components.ToolButton
 import io.github.usmandurrany.tether.demo.ui.components.presenceColor
 import io.github.usmandurrany.tether.demo.ui.theme.AppIcons
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 
 /** Below this width the chat list and the open chat take turns, like on a phone. */
 private val TwoPaneWidth = 720.dp
 
-/** The chat list beside the open chat, or one at a time in a narrow window. */
 @Composable
-fun ChatsScreen(session: DemoSession) {
+fun ChatsRoute(session: DemoSession) {
     val vm = viewModel { ChatsViewModel(session) }
     val state by vm.state.collectAsState()
+    ChatsScreen(state, vm, vm.errors)
+}
+
+/**
+ * The chat list beside the open chat, or one at a time in a narrow window.
+ * [menuOpenFor] opens one message's menu, for screenshots.
+ */
+@Composable
+fun ChatsScreen(state: ChatsViewModel.State, actions: ChatsActions, errors: Flow<String> = emptyFlow(), menuOpenFor: String? = null) {
     val snackbar = remember { SnackbarHostState() }
     var dialog by remember { mutableStateOf<ChatDialog?>(null) }
-    LaunchedEffect(vm) { vm.errors.collect { snackbar.showSnackbar(it) } }
+    LaunchedEffect(errors) { errors.collect { snackbar.showSnackbar(it) } }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val twoPane = maxWidth >= TwoPaneWidth
         val listWidth = (maxWidth * 0.32f).coerceIn(280.dp, 380.dp)
-        val list: @Composable (Modifier) -> Unit = { m -> ChatList(state, vm, onDialog = { dialog = it }, modifier = m) }
+        val list: @Composable (Modifier) -> Unit = { m -> ChatList(state, actions, onDialog = { dialog = it }, modifier = m) }
         val conversation: @Composable (Modifier) -> Unit = { m ->
             val open = state.open
             if (open != null) {
-                Conversation(state, open, vm, showBack = !twoPane, onDialog = { dialog = it }, modifier = m)
+                Conversation(state, open, actions, showBack = !twoPane, onDialog = { dialog = it }, modifier = m, menuOpenFor = menuOpenFor)
             } else {
                 Box(m.background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
                     EmptyState(AppIcons.Chat, "Pick a chat", "Choose someone on the left, or add a contact with +.")
@@ -111,20 +121,20 @@ fun ChatsScreen(session: DemoSession) {
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = 88.dp))
     }
-    dialog?.let { ChatDialogs(it, vm, onDismiss = { dialog = null }) }
+    dialog?.let { ChatDialogs(it, actions, onDismiss = { dialog = null }) }
 }
 
 // --- The list ------------------------------------------------------------------------
 
 @Composable
-private fun ChatList(state: ChatsViewModel.State, vm: ChatsViewModel, onDialog: (ChatDialog) -> Unit, modifier: Modifier) {
+private fun ChatList(state: ChatsViewModel.State, actions: ChatsActions, onDialog: (ChatDialog) -> Unit, modifier: Modifier) {
     Column(modifier.background(MaterialTheme.colorScheme.surface)) {
         Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Chats", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
             ToolButton(AppIcons.Plus, "Add a contact", { onDialog(ChatDialog.AddContact) })
         }
-        SearchField(state.query, vm::search, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-        state.requests.forEach { RequestCard(it, vm) }
+        SearchField(state.query, actions::search, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        state.requests.forEach { RequestCard(it, actions) }
         Spacer(Modifier.height(6.dp))
         when {
             !state.anyChats -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -141,8 +151,8 @@ private fun ChatList(state: ChatsViewModel.State, vm: ChatsViewModel, onDialog: 
                 val listState = rememberLazyListState()
                 LazyColumn(state = listState, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
                     items(state.chats, key = { it.jid.toString() }) { item ->
-                        ContextMenuArea(items = { contactMenu(item, vm, onDialog) }) {
-                            ChatRow(item, selected = item.jid == state.openJid, onClick = { vm.open(item.jid) })
+                        ContextMenuArea(items = { contactMenu(item, actions, onDialog) }) {
+                            ChatRow(item, selected = item.jid == state.openJid, onClick = { actions.open(item.jid) })
                         }
                     }
                 }
@@ -173,7 +183,7 @@ private fun SearchField(value: String, onChange: (String) -> Unit, modifier: Mod
 }
 
 @Composable
-private fun RequestCard(request: ContactRequest, vm: ChatsViewModel) {
+private fun RequestCard(request: ContactRequest, actions: ChatsActions) {
     Surface(
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.primaryContainer,
@@ -186,8 +196,8 @@ private fun RequestCard(request: ContactRequest, vm: ChatsViewModel) {
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
-                Button(onClick = { vm.answer(request.from, true) }, contentPadding = ButtonDefaults.SmallButtonContentPadding, modifier = Modifier.height(34.dp)) { Text("Accept") }
-                OutlinedButton(onClick = { vm.answer(request.from, false) }, contentPadding = ButtonDefaults.SmallButtonContentPadding, modifier = Modifier.height(34.dp)) { Text("Decline") }
+                Button(onClick = { actions.answer(request.from, true) }, contentPadding = ButtonDefaults.SmallButtonContentPadding, modifier = Modifier.height(34.dp)) { Text("Accept") }
+                OutlinedButton(onClick = { actions.answer(request.from, false) }, contentPadding = ButtonDefaults.SmallButtonContentPadding, modifier = Modifier.height(34.dp)) { Text("Decline") }
             }
         }
     }
@@ -252,17 +262,17 @@ private fun ChatRow(item: ChatItem, selected: Boolean, onClick: () -> Unit) {
 }
 
 /** Rename, presence sharing and removal, from a right-click or the ⋯ in the chat header. */
-fun contactMenu(item: ChatItem, vm: ChatsViewModel, onDialog: (ChatDialog) -> Unit) = listOfNotNull(
+fun contactMenu(item: ChatItem, actions: ChatsActions, onDialog: (ChatDialog) -> Unit) = listOfNotNull(
     ContextMenuItem(if (item.contact == null) "Add to contacts…" else "Rename…") { onDialog(ChatDialog.Rename(item)) },
-    ContextMenuItem("Ask to see their presence") { vm.askForPresence(item.jid) },
-    ContextMenuItem("Share my presence") { vm.sharePresence(item.jid) },
-    ContextMenuItem("Stop sharing my presence") { vm.stopSharingPresence(item.jid) },
+    ContextMenuItem("Ask to see their presence") { actions.askForPresence(item.jid) },
+    ContextMenuItem("Share my presence") { actions.sharePresence(item.jid) },
+    ContextMenuItem("Stop sharing my presence") { actions.stopSharingPresence(item.jid) },
     item.contact?.let { ContextMenuItem("Remove contact…") { onDialog(ChatDialog.Remove(item)) } },
 )
 
 /** The same actions as [contactMenu], as a dropdown under a button. */
 @Composable
-fun ContactDropdown(item: ChatItem, vm: ChatsViewModel, expanded: Boolean, onDismiss: () -> Unit, onDialog: (ChatDialog) -> Unit) {
+fun ContactDropdown(item: ChatItem, actions: ChatsActions, expanded: Boolean, onDismiss: () -> Unit, onDialog: (ChatDialog) -> Unit) {
     @Composable
     fun entry(text: String, icon: ImageVector?, danger: Boolean = false, action: () -> Unit) {
         val color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
@@ -275,9 +285,9 @@ fun ContactDropdown(item: ChatItem, vm: ChatsViewModel, expanded: Boolean, onDis
     DropdownMenu(expanded, onDismiss) {
         entry(if (item.contact == null) "Add to contacts…" else "Rename…", if (item.contact == null) AppIcons.Plus else AppIcons.Edit) { onDialog(ChatDialog.Rename(item)) }
         HorizontalDivider(Modifier.padding(vertical = 4.dp))
-        entry("Ask to see their presence", null) { vm.askForPresence(item.jid) }
-        entry("Share my presence", null) { vm.sharePresence(item.jid) }
-        entry("Stop sharing my presence", null) { vm.stopSharingPresence(item.jid) }
+        entry("Ask to see their presence", null) { actions.askForPresence(item.jid) }
+        entry("Share my presence", null) { actions.sharePresence(item.jid) }
+        entry("Stop sharing my presence", null) { actions.stopSharingPresence(item.jid) }
         if (item.contact != null) {
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
             entry("Remove contact…", AppIcons.Trash, danger = true) { onDialog(ChatDialog.Remove(item)) }
@@ -300,22 +310,22 @@ sealed interface ChatDialog {
 }
 
 @Composable
-private fun ChatDialogs(dialog: ChatDialog, vm: ChatsViewModel, onDismiss: () -> Unit) {
+private fun ChatDialogs(dialog: ChatDialog, actions: ChatsActions, onDismiss: () -> Unit) {
     when (dialog) {
-        ChatDialog.AddContact -> AddContactDialog(vm, onDismiss)
+        ChatDialog.AddContact -> AddContactDialog(actions, onDismiss)
         is ChatDialog.Rename -> TextInputDialog(
             if (dialog.item.contact == null) "Add to contacts" else "Rename", "Name for ${dialog.item.jid}", dialog.item.contact?.name.orEmpty(), "Save",
             onDismiss = onDismiss, supporting = "Leave empty to use the name in their profile.",
-        ) { vm.rename(dialog.item.jid, it) }
+        ) { actions.rename(dialog.item.jid, it) }
         is ChatDialog.Remove -> ConfirmDialog(
             "Remove contact", "Remove ${dialog.item.name} from your contacts? Your chat history stays.", "Remove", onDismiss, danger = true,
-        ) { vm.removeContact(dialog.item.jid) }
+        ) { actions.removeContact(dialog.item.jid) }
         is ChatDialog.DeleteForEveryone -> ConfirmDialog(
             "Delete for everyone", "Delete this message for everyone in the chat?", "Delete", onDismiss, danger = true,
-        ) { vm.deleteForEveryone(dialog.message) }
-        ChatDialog.Photo -> PhotoDialog(vm, onDismiss)
-        ChatDialog.Video -> VideoDialog(vm, onDismiss)
-        ChatDialog.Location -> LocationDialog(vm, onDismiss)
-        ChatDialog.Custom -> CustomDataDialog(vm, onDismiss)
+        ) { actions.deleteForEveryone(dialog.message) }
+        ChatDialog.Photo -> PhotoDialog(actions, onDismiss)
+        ChatDialog.Video -> VideoDialog(actions, onDismiss)
+        ChatDialog.Location -> LocationDialog(actions, onDismiss)
+        ChatDialog.Custom -> CustomDataDialog(actions, onDismiss)
     }
 }

@@ -43,12 +43,43 @@ data class ChatItem(
 data class ContactRequest(val from: BareJid, val note: String?)
 
 /**
+ * What the person can do on the chat screens. [ChatsViewModel] does it for
+ * real; previews and screenshot tests use the do-nothing defaults.
+ */
+interface ChatsActions {
+    fun search(text: String) {}
+    fun open(jid: BareJid) {}
+    fun close() {}
+    fun send(text: String) {}
+    fun typing() {}
+    fun sendPhoto(url: String, caption: String) {}
+    fun sendVideo(url: String, seconds: Int?, caption: String) {}
+    fun sendLocation(latitude: Double, longitude: Double, label: String?) {}
+
+    /** Returns a problem to show, or null when it was sent. */
+    fun sendCustom(type: String, fields: String, caption: String): String? = null
+    fun deleteForEveryone(m: Message) {}
+    fun deleteForMe(m: Message) {}
+    fun retry(m: Message) {}
+    fun loadOlder() {}
+
+    /** Returns a problem to show, or null when the address is fine. */
+    fun addContact(address: String, name: String, group: String): String? = null
+    fun rename(jid: BareJid, name: String) {}
+    fun removeContact(jid: BareJid) {}
+    fun answer(jid: BareJid, accept: Boolean) {}
+    fun askForPresence(jid: BareJid) {}
+    fun sharePresence(jid: BareJid) {}
+    fun stopSharingPresence(jid: BareJid) {}
+}
+
+/**
  * The chat list and the open chat. The SDK's [io.github.usmandurrany.tether.im.TetherChat]
  * already does the chat work (ticks, read markers, typing timers, history,
  * de-duplication); this only shapes its flows for the screen and forwards
  * what the person does.
  */
-class ChatsViewModel(private val session: DemoSession) : ViewModel() {
+class ChatsViewModel(private val session: DemoSession) : ViewModel(), ChatsActions {
     data class State(
         val chats: List<ChatItem> = emptyList(),
         val anyChats: Boolean = false,
@@ -128,12 +159,12 @@ class ChatsViewModel(private val session: DemoSession) : ViewModel() {
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, State())
 
-    fun search(text: String) {
+    override fun search(text: String) {
         query.value = text
     }
 
     /** Opens a chat. The SDK marks it read while the window has focus, and loads its newest history the first time. */
-    fun open(jid: BareJid) {
+    override fun open(jid: BareJid) {
         val previous = openJid.value
         if (previous == jid) return
         previous?.let(chat::closeChat)
@@ -142,7 +173,7 @@ class ChatsViewModel(private val session: DemoSession) : ViewModel() {
     }
 
     /** Back to the list; the SDK stops our typing notification. */
-    fun close() {
+    override fun close() {
         openJid.value?.let(chat::closeChat)
         openJid.value = null
     }
@@ -154,13 +185,13 @@ class ChatsViewModel(private val session: DemoSession) : ViewModel() {
     // --- Writing ---------------------------------------------------------------------
 
     /** Shows at once as "sending"; works offline too. */
-    fun send(text: String) {
+    override fun send(text: String) {
         val jid = openJid.value ?: return
         chat.send(jid, text)
     }
 
     /** The SDK sends "typing", then "paused" after a few quiet seconds. */
-    fun typing() {
+    override fun typing() {
         openJid.value?.let(chat::typing)
     }
 
@@ -171,19 +202,21 @@ class ChatsViewModel(private val session: DemoSession) : ViewModel() {
     }
 
     /** The demo has no file hosting: it sends a link and reads the photo's size and dimensions from the web server. */
-    fun sendPhoto(url: String, caption: String) = viewModelScope.launch {
-        val info = MediaProbe.photo(url)
-        sendData(caption, Attachments.photo(url, info?.width, info?.height, info?.bytes, info?.mime))
+    override fun sendPhoto(url: String, caption: String) {
+        viewModelScope.launch {
+            val info = MediaProbe.photo(url)
+            sendData(caption, Attachments.photo(url, info?.width, info?.height, info?.bytes, info?.mime))
+        }
     }
 
-    fun sendVideo(url: String, seconds: Int?, caption: String) = viewModelScope.launch {
-        sendData(caption, Attachments.video(url, seconds, MediaProbe.size(url)))
+    override fun sendVideo(url: String, seconds: Int?, caption: String) {
+        viewModelScope.launch { sendData(caption, Attachments.video(url, seconds, MediaProbe.size(url))) }
     }
 
-    fun sendLocation(latitude: Double, longitude: Double, label: String?) = sendData("", Attachments.location(latitude, longitude, label))
+    override fun sendLocation(latitude: Double, longitude: Double, label: String?) = sendData("", Attachments.location(latitude, longitude, label))
 
-    /** Any type and fields: the receiver shows them as they arrive. Returns a problem to show, or null. */
-    fun sendCustom(type: String, fields: String, caption: String): String? {
+    /** Any type and fields: the receiver shows them as they arrive. */
+    override fun sendCustom(type: String, fields: String, caption: String): String? {
         val pairs = fields.lines().mapNotNull { line ->
             val i = line.indexOf('=')
             if (i <= 0) null else line.substring(0, i).trim() to line.substring(i + 1).trim()
@@ -193,17 +226,19 @@ class ChatsViewModel(private val session: DemoSession) : ViewModel() {
 
     // --- Messages --------------------------------------------------------------------
 
-    fun deleteForEveryone(m: Message) {
+    override fun deleteForEveryone(m: Message) {
         if (!chat.deleteForEveryone(m)) _errors.trySend("This message can't be deleted for everyone.")
     }
 
-    fun deleteForMe(m: Message) = chat.deleteForMe(m)
+    override fun deleteForMe(m: Message) {
+        chat.deleteForMe(m)
+    }
 
-    fun retry(m: Message) {
+    override fun retry(m: Message) {
         chat.retry(m)
     }
 
-    fun loadOlder() {
+    override fun loadOlder() {
         val jid = openJid.value ?: return
         if (loadingOlder.value) return
         loadingOlder.value = true
@@ -215,8 +250,7 @@ class ChatsViewModel(private val session: DemoSession) : ViewModel() {
 
     // --- Contacts --------------------------------------------------------------------
 
-    /** Returns a problem to show, or null when the address is fine. */
-    fun addContact(address: String, name: String, group: String): String? {
+    override fun addContact(address: String, name: String, group: String): String? {
         val jid = runCatching { BareJid.parse(address.trim()) }.getOrNull()
         if (jid?.local == null) return "Enter a full address, like bob@example.com."
         launch { session.addContact(jid, name.trim().ifEmpty { null }, group.trim().ifEmpty { null }) }
@@ -224,16 +258,16 @@ class ChatsViewModel(private val session: DemoSession) : ViewModel() {
     }
 
     /** Renaming keeps their groups. */
-    fun rename(jid: BareJid, name: String) = launch { chat.addContact(jid, name.trim().ifEmpty { null }) }
+    override fun rename(jid: BareJid, name: String) = launch { chat.addContact(jid, name.trim().ifEmpty { null }) }
 
-    fun removeContact(jid: BareJid) = launch { chat.removeContact(jid) }
+    override fun removeContact(jid: BareJid) = launch { chat.removeContact(jid) }
 
-    fun answer(jid: BareJid, accept: Boolean) = launch { session.answerRequest(jid, accept) }
+    override fun answer(jid: BareJid, accept: Boolean) = launch { session.answerRequest(jid, accept) }
 
     // Finer subscription control than TetherChat's approve and deny, from the protocol-level API.
-    fun askForPresence(jid: BareJid) = launch { session.im.presences.request(jid) }
-    fun sharePresence(jid: BareJid) = launch { session.im.presences.approve(jid) }
-    fun stopSharingPresence(jid: BareJid) = launch { session.im.presences.deny(jid) }
+    override fun askForPresence(jid: BareJid) = launch { session.im.presences.request(jid) }
+    override fun sharePresence(jid: BareJid) = launch { session.im.presences.approve(jid) }
+    override fun stopSharingPresence(jid: BareJid) = launch { session.im.presences.deny(jid) }
 
     private fun launch(block: suspend () -> Unit) {
         viewModelScope.launch { runCatching { block() }.onFailure { report(it) } }

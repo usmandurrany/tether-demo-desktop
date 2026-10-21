@@ -89,6 +89,11 @@ object Images {
         }.getOrNull()
     }?.also { photos[url] = it }
 
+    /** Puts a photo in the cache, so screenshots need no network. */
+    internal fun preload(url: String, bytes: ByteArray) {
+        decode(bytes)?.let { photos[url] = it }
+    }
+
     private fun decode(bytes: ByteArray): ImageBitmap? =
         runCatching { org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap() }.getOrNull()
 }
