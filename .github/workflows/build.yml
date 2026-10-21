@@ -2,6 +2,7 @@ name: Build
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -33,7 +34,7 @@ jobs:
           path: build/libs/tether-demo-desktop-0.1.0-all.jar
 
   # Draws every screen with sample data (ScreenshotTest): no server or display needed.
-  # On a branch other than main, a change in the pictures is committed to docs/screenshots.
+  # Run the workflow by hand on a branch to commit the pictures to docs/screenshots.
   screenshots:
     runs-on: ubuntu-latest
     permissions:
@@ -56,7 +57,7 @@ jobs:
           name: screenshots
           path: build/screenshots
       - name: Commit them to docs/screenshots
-        if: github.event_name != 'pull_request' && github.ref_name != 'main'
+        if: github.event_name == 'workflow_dispatch' && github.ref_name != 'main'
         run: |
           mkdir -p docs/screenshots
           cp build/screenshots/*.png docs/screenshots/

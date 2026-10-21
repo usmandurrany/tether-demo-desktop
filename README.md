@@ -13,12 +13,21 @@ A small chat app for Linux, Windows and macOS that shows how to use the [Tether 
 
 The UI is [Compose for Desktop](https://www.jetbrains.com/compose-multiplatform/) with Material 3, light and dark. It adapts to the window: two panes when there is room, the chat list or one chat when it is narrow. Everything the SDK does lives in one file, [`DemoSession.kt`](src/main/kotlin/io/github/usmandurrany/tether/demo/DemoSession.kt); the rest only shows it.
 
+![Chats in a wide window](docs/screenshots/chat-wide.png)
+
+| Narrow window | Dark theme | Sign in |
+| --- | --- | --- |
+| ![The chat list and one chat take turns in a narrow window](docs/screenshots/chat-narrow.png) | ![Dark theme](docs/screenshots/chat-wide-dark.png) | ![Sign in](docs/screenshots/sign-in-wide.png) |
+
+More in [docs/screenshots](docs/screenshots).
+
 ### How the app is built
 
 The app follows the same pattern as an Android Compose app, so it doubles as a template for a Compose chat client:
 
 - **ViewModels with one state each.** `AppViewModel` signs in and out. Once signed in, `HomeViewModel`, `ChatsViewModel`, `ServerViewModel` and `LogViewModel` each `combine` the SDK's `StateFlow`s into one immutable `State` that the screen collects.
-- **One-way data flow.** Screens are functions of their state and call ViewModel methods for everything the person does. Problems that should show once (a failed delete, say) come through a `Channel` and appear in a snackbar.
+- **Routes and stateless screens.** Each screen has a `…Route` that gets its ViewModel and collects its state, and a `…Screen` that only takes that state and actions (`ChatsScreen(state, actions)`). The screens never see the SDK or a ViewModel, so tests and previews can draw them with any state.
+- **One-way data flow.** Screens are functions of their state and report everything the person does through their actions. Problems that should show once (a failed delete, say) come through a `Channel` and appear in a snackbar.
 - **Scoped to the session.** Each signed-in session gets its own `ViewModelStore`, so signing out clears the chat state with it (`ViewModelScope` in [`Main.kt`](src/main/kotlin/io/github/usmandurrany/tether/demo/Main.kt)).
 - **No extra frameworks.** No DI container or navigation library: one session object is passed down, and the navigation rail switches between three screens.
 
@@ -127,7 +136,9 @@ The log portal that **Log portal URL** uploads to is a separate project, [usmand
 
 ## Tests
 
-`./gradlew test` runs an end-to-end test against a real server when you give it two accounts, and is skipped otherwise:
+`ScreenshotTest` draws every screen with sample data into `build/screenshots`, off-screen, with no server or display. CI runs it on every pull request; run the Build workflow by hand on a branch to commit fresh pictures to [docs/screenshots](docs/screenshots).
+
+`./gradlew test` also runs an end-to-end test against a real server when you give it two accounts, and is skipped otherwise:
 
 ```sh
 TETHER_A_JID=alice@example.com TETHER_A_PASSWORD=... \
