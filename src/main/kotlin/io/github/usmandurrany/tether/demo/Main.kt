@@ -32,6 +32,8 @@ import kotlinx.coroutines.launch
 import java.awt.Dimension
 
 fun main() {
+    // Before any window exists: Linux HiDPI screens would otherwise get a tiny UI.
+    DisplayScale.applyOnLinux()
     // macOS: the title bar follows the system's light or dark appearance.
     System.setProperty("apple.awt.application.appearance", "system")
     val appViewModels = Owner()
