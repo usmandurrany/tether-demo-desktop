@@ -59,6 +59,12 @@ java -jar build/libs/tether-demo-desktop-0.1.0-all.jar
 
 `./gradlew packageDistributionForCurrentOS` builds an installer with its own Java runtime: a `.deb` on Linux, an `.msi` on Windows and a `.dmg` on macOS, in `build/compose/binaries`.
 
+CI builds the Mac app for you: every run of the Build workflow (on `main`, or started by hand on any branch) has a `tether-demo-macos` download with a `.dmg` for Apple Silicon Macs. The app is not signed, so macOS blocks it the first time. Drag it to Applications, try to open it once, then go to **System Settings > Privacy & Security** and press **Open Anyway**. Or, in Terminal:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/tether-demo.app
+```
+
 ## Connect to a server
 
 1. Enter your address (`alice@example.com`) and password and press **Connect**. Most servers need nothing else: the server is found through the domain's DNS SRV records.

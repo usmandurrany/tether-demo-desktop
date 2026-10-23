@@ -33,6 +33,34 @@ jobs:
           name: tether-demo-desktop-jar
           path: build/libs/tether-demo-desktop-0.1.0-all.jar
 
+  # A macOS app (.dmg) for Apple Silicon Macs, built against the SDK's main branch.
+  # It is not signed, so macOS asks once before opening it (see the README).
+  mac-app:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build the .dmg
+        run: ./gradlew packageDmg --stacktrace
+      - name: Start the packaged app (catches modules missing from its bundled Java)
+        run: |
+          app=$(ls -d build/compose/binaries/main/app/*.app)
+          "$app/Contents/MacOS/tether-demo" > app.log 2>&1 &
+          pid=$!
+          sleep 20
+          if ! kill -0 $pid 2>/dev/null; then cat app.log; echo "The app quit on its own"; exit 1; fi
+          kill $pid
+          cat app.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tether-demo-macos
+          path: build/compose/binaries/main/dmg/*.dmg
+          compression-level: 0
+
   # Draws every screen with sample data (ScreenshotTest): no server or display needed.
   # Run the workflow by hand on a branch to commit the pictures to docs/screenshots.
   screenshots:
